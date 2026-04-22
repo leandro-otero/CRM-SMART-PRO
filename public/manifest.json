@@ -1,0 +1,25 @@
+{
+  "name": "LeadFlow ERP & CRM Pro",
+  "short_name": "LeadFlow",
+  "description": "Sistema de prospecção inteligente, pipeline de vendas e gestão de clientes para agências digitais.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070a12",
+  "theme_color": "#070a12",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"]
+}
