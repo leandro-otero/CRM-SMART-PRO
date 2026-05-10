@@ -4,6 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
+// In-memory cache to prevent duplicate Gemini API calls for the same lead
+const analyzeCache = new Map<string, { timestamp: number; data: any }>();
+const CACHE_TTL = 1000 * 60 * 60 * 24; // 24 hours
+
 interface LeadParaAnalise {
   nome: string;
   nicho: string;
@@ -37,6 +41,14 @@ export async function POST(request: Request) {
 
     if (!GEMINI_API_KEY) {
       return NextResponse.json({ mode: 'no_api_key', analysis: null });
+    }
+
+    // 2. Check Cache
+    const cacheKey = `${lead.nome.toLowerCase().trim()}-${localizacao.toLowerCase().trim()}`;
+    const cached = analyzeCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`[Cache Hit] Returning cached analysis for: ${cacheKey}`);
+      return NextResponse.json(cached.data);
     }
 
     // Tentar encontrar links de redes sociais no website se houver
@@ -88,7 +100,12 @@ JSON:
     // Parse JSON
     const analysis = JSON.parse(text);
 
-    return NextResponse.json({ mode: 'ai', analysis });
+    const responseData = { mode: 'ai', analysis };
+    
+    // Save to cache
+    analyzeCache.set(cacheKey, { timestamp: Date.now(), data: responseData });
+
+    return NextResponse.json(responseData);
   } catch (err) {
     console.error('[Gemini Analysis Error]', err);
     return NextResponse.json({ mode: 'error', analysis: null, error: String(err) });

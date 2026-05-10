@@ -52,10 +52,13 @@ function getCityCoords(cidade: string): string | null {
   return null;
 }
 
-// Simple in-memory rate limiting
 const rateLimitMap = new Map<string, { count: number; lastReset: number }>();
 const RATE_LIMIT_MAX = 20; // max requests
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+
+// In-memory cache to prevent duplicate Google API calls
+const searchCache = new Map<string, { timestamp: number; data: any }>();
+const CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
 export async function POST(request: Request) {
   try {
@@ -93,6 +96,14 @@ export async function POST(request: Request) {
 
     if (!segmento || !cidade) {
       return NextResponse.json({ error: 'Segmento e cidade são obrigatórios' }, { status: 400 });
+    }
+
+    // 3. Check Cache
+    const cacheKey = `${segmento.toLowerCase().trim()}-${cidade.toLowerCase().trim()}-${quantidade}`;
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`[Cache Hit] Returning cached results for: ${cacheKey}`);
+      return NextResponse.json(cached.data);
     }
 
     if (!GOOGLE_API_KEY) {
@@ -157,12 +168,17 @@ export async function POST(request: Request) {
       })
     );
 
-    return NextResponse.json({
+    const responseData = {
       leads: enrichedLeads,
       mode: 'api',
       total: enrichedLeads.length,
       query: `${segmento} em ${cidade}`,
-    });
+    };
+
+    // Save to cache
+    searchCache.set(cacheKey, { timestamp: Date.now(), data: responseData });
+
+    return NextResponse.json(responseData);
   } catch (err) {
     console.error('[API Route Error]', err);
     return NextResponse.json({ error: 'Erro interno do servidor', leads: [], mode: 'error' }, { status: 500 });
