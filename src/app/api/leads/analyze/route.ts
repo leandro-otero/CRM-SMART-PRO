@@ -90,28 +90,17 @@ export async function POST(request: Request) {
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
-      generationConfig: { responseMimeType: "application/json" }
+      model: 'gemini-2.0-flash-lite',
+      generationConfig: { 
+        responseMimeType: "application/json",
+        maxOutputTokens: 400,
+        temperature: 0.3
+      }
     });
 
-    const prompt = `Analisa este negócio local e gera os outputs estruturados.
-Nicho: ${nicho}. Local: ${localizacao}.
-DADOS: Nome: ${lead.nome}, Rating: ${lead.rating} (${lead.total_avaliacoes} aval), Site: ${lead.tem_site ? 'Sim' : 'Não'}, Insta: ${lead.tem_instagram ? 'Sim' : 'Não'}, Maps completo: ${lead.google_maps_completo ? 'Sim' : 'Não'}, Wpp: ${lead.tem_whatsapp_business ? 'Sim' : 'Não'}, Obs: ${lead.observacoes}.
-
-REGRAS: pt-PT rigoroso, zero erros. Icebreaker sem "comprar", "preço" ou "vender".
-
-JSON:
-{
-  "dor_identificada": "frase da dor",
-  "servico_primario": "serviço urgente",
-  "argumento_venda": "argumento focado na dor",
-  "copy_icebreaker": "mensagem Wpp",
-  "temperatura": "QUENTE|MORNO|FRIO",
-  "score_ia": numero,
-  "urgencia": "ALTA|MEDIA|BAIXA",
-  "setor": "Saúde|Turismo|Comércio|Indústria|Serviços B2B|Gastronomia|Automóvel|Outros",
-  "ticket_estimado_mensal": numero inteiro estimado em euros (MRR realista)
-}`;
+    const prompt = `Analisa negócio local. Nicho:${nicho}, Local:${localizacao}, Nome:${lead.nome}, Rating:${lead.rating}(${lead.total_avaliacoes}), Site:${lead.tem_site?'S':'N'}, Insta:${lead.tem_instagram?'S':'N'}, Maps:${lead.google_maps_completo?'S':'N'}, Wpp:${lead.tem_whatsapp_business?'S':'N'}, Obs:${lead.observacoes?.substring(0,120)||'N/A'}.
+Regras:pt-PT,zero erros,icebreaker s/comprar|preço|vender,3 parágrafos curtos,tom consultor,CTA para áudio.
+JSON:{"dor_identificada":"str","servico_primario":"str","argumento_venda":"str","copy_icebreaker":"str","temperatura":"QUENTE|MORNO|FRIO","score_ia":num,"urgencia":"ALTA|MEDIA|BAIXA","setor":"str","ticket_estimado_mensal":num}`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();

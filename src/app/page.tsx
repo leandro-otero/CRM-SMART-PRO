@@ -119,15 +119,36 @@ export default function Dashboard() {
   useEffect(() => { 
     fetchAll(); 
 
+    let debounceTimer: NodeJS.Timeout;
+    const debouncedFetch = (table: string) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        if (table === 'leads_prospeccao') {
+          const { data } = await supabase.from('leads_prospeccao').select('id, nome_empresa, nicho, score_aceitacao, classificacao, status_funil, data_entrada_etapa, potencial_receita_mensal').order('score_aceitacao', { ascending: false });
+          if (data) setLeads(data);
+        } else if (table === 'clientes') {
+          const { data } = await supabase.from('clientes').select('id, nome_empresa, status');
+          if (data) setClientes(data);
+        } else if (table === 'servicos_contratados') {
+          const { data } = await supabase.from('servicos_contratados').select('valor, tipo, status');
+          if (data) setServicos(data);
+        } else if (table === 'atividade_log') {
+          const { data } = await supabase.from('atividade_log').select('*').order('created_at', { ascending: false }).limit(10);
+          if (data) setAtividades(data);
+        }
+      }, 300);
+    };
+
     const channel = supabase
-      .channel('dashboard_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads_prospeccao' }, fetchAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, fetchAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos_contratados' }, fetchAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'atividade_log' }, fetchAll)
+      .channel('dashboard_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads_prospeccao' }, () => debouncedFetch('leads_prospeccao'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => debouncedFetch('clientes'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos_contratados' }, () => debouncedFetch('servicos_contratados'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'atividade_log' }, () => debouncedFetch('atividade_log'))
       .subscribe();
 
     return () => {
+      clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, []);

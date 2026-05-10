@@ -76,7 +76,23 @@ export default function PipelinePage() {
     }
   };
 
-  useEffect(() => { fetchLeads(); }, []);
+  useEffect(() => { 
+    fetchLeads(); 
+
+    let debounceTimer: NodeJS.Timeout;
+    const channel = supabase
+      .channel('pipeline_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads_prospeccao' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchLeads, 500);
+      })
+      .subscribe();
+
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
