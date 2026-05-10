@@ -32,8 +32,17 @@ export const KanbanBoard = ({ initialLeads, isLoading }: KanbanBoardProps) => {
     const lead = leads.find(l => l.id === cardId);
 
     if (lead && lead.status_funil !== novaColuna) {
-      setLeads(prev => prev.map(l => l.id === cardId ? { ...l, status_funil: novaColuna } : l));
+      const colunaAnterior = lead.status_funil;
+      setLeads(prev => prev.map(l => l.id === cardId ? { ...l, status_funil: novaColuna, data_entrada_etapa: new Date().toISOString() } : l));
       await supabase.from('leads_prospeccao').update({ status_funil: novaColuna, data_entrada_etapa: new Date().toISOString() }).eq('id', cardId);
+      
+      // Log activity
+      await supabase.from('atividade_log').insert({
+        entidade_tipo: 'lead',
+        entidade_id: cardId,
+        acao: `Pipeline: ${colunaAnterior} → ${novaColuna}`,
+        detalhes: `Lead "${lead.nome_empresa}" movido de "${colunaAnterior}" para "${novaColuna}"`,
+      });
     }
   };
 

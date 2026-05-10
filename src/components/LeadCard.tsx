@@ -78,6 +78,10 @@ export const LeadCard = ({ lead, onSelect }: LeadCardProps) => {
     ? Math.floor((Date.now() - new Date(lead.data_entrada_etapa).getTime()) / (1000 * 60 * 60 * 24))
     : 0;
 
+  // Stale lead alert (3+ days without movement)
+  const isStale = diasNaEtapa >= 3 && !['Fechado', 'Rejeitado'].includes(lead.status_funil);
+  const isCritical = diasNaEtapa >= 7 && !['Fechado', 'Rejeitado'].includes(lead.status_funil);
+
   return (
     <div
       ref={setNodeRef}
@@ -85,7 +89,13 @@ export const LeadCard = ({ lead, onSelect }: LeadCardProps) => {
       {...listeners}
       {...attributes}
       onClick={() => onSelect(lead)}
-      className="group relative p-4 bg-white/[0.03] border border-white/[0.08] rounded-2xl backdrop-blur-md shadow-lg transition-all hover:bg-white/[0.07] hover:border-indigo-500/20 cursor-grab active:cursor-grabbing flex flex-col gap-3"
+      className={`group relative p-4 border rounded-2xl backdrop-blur-md shadow-lg transition-all hover:bg-white/[0.07] hover:border-indigo-500/20 cursor-grab active:cursor-grabbing flex flex-col gap-3 ${
+        isCritical
+          ? 'bg-red-500/[0.06] border-red-500/30 animate-pulse'
+          : isStale
+          ? 'bg-amber-500/[0.04] border-amber-500/20'
+          : 'bg-white/[0.03] border-white/[0.08]'
+      }`}
     >
       {/* Header */}
       <div className="flex justify-between items-start">

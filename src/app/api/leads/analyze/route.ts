@@ -51,11 +51,12 @@ export async function POST(request: Request) {
       return NextResponse.json(cached.data);
     }
 
-    // Tentar encontrar links de redes sociais no website se houver
+    // Tentar encontrar links de redes sociais, emails e telefones no website
+    let scrapedData: { email?: string; instagram?: string; facebook?: string; telefone?: string } = {};
     if (lead.tem_site && lead.website) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 segundos max
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         const res = await fetch(lead.website.startsWith('http') ? lead.website : `https://${lead.website}`, { signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {
@@ -63,6 +64,24 @@ export async function POST(request: Request) {
           const htmlLower = html.toLowerCase();
           if (htmlLower.includes('instagram.com/')) lead.tem_instagram = true;
           if (htmlLower.includes('facebook.com/')) (lead as any).facebook = true;
+
+          // Extract Instagram URL
+          const igMatch = html.match(/https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/i);
+          if (igMatch) scrapedData.instagram = igMatch[0];
+
+          // Extract Facebook URL
+          const fbMatch = html.match(/https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.]+\/?/i);
+          if (fbMatch) scrapedData.facebook = fbMatch[0];
+
+          // Extract Email
+          const emailMatch = html.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/i);
+          if (emailMatch && !emailMatch[1].endsWith('.png') && !emailMatch[1].endsWith('.jpg')) {
+            scrapedData.email = emailMatch[1].toLowerCase();
+          }
+
+          // Extract Portuguese phone numbers
+          const phoneMatch = html.replace(/\s/g, '').match(/(?:00351|\+351)?[\s-]?(9[1236]\d{7})/);
+          if (phoneMatch) scrapedData.telefone = phoneMatch[1];
         }
       } catch (e) {
         console.log('Timeout ou erro ao verificar site:', e);
@@ -100,7 +119,7 @@ JSON:
     // Parse JSON
     const analysis = JSON.parse(text);
 
-    const responseData = { mode: 'ai', analysis };
+    const responseData = { mode: 'ai', analysis, scraped: scrapedData };
     
     // Save to cache
     analyzeCache.set(cacheKey, { timestamp: Date.now(), data: responseData });

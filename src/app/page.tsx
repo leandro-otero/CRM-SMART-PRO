@@ -146,15 +146,18 @@ export default function Dashboard() {
     const taxaConversao = totalLeads > 0
       ? Math.round((leads.filter(l => l.status_funil === 'Fechado').length / totalLeads) * 100)
       : 0;
+    const propostaValue = leads
+      .filter(l => ['Proposta Enviada', 'Negociação'].includes(l.status_funil))
+      .reduce((a, l) => a + (Number(l.potencial_receita_mensal) || 0), 0);
 
-    return { totalLeads, scoreMedio, clientesAtivos, mrr, pipelineValue, leadsQuentes, taxaConversao };
+    return { totalLeads, scoreMedio, clientesAtivos, mrr, pipelineValue, leadsQuentes, taxaConversao, propostaValue };
   }, [leads, clientes, servicos]);
 
   const leadsQuentes = leads.filter(l => l.classificacao === 'QUENTE').slice(0, 5);
   const leadsParados = leads.filter(l => {
     if (!l.data_entrada_etapa) return false;
     const dias = Math.floor((Date.now() - new Date(l.data_entrada_etapa).getTime()) / (1000 * 60 * 60 * 24));
-    return dias >= 5 && !['Fechado', 'Rejeitado'].includes(l.status_funil);
+    return dias >= 3 && !['Fechado', 'Rejeitado'].includes(l.status_funil);
   });
 
   const PIPELINE_STAGES = ['Prospecção', 'Contato', 'Qualificado', 'Proposta Enviada', 'Negociação', 'Fechado'];
@@ -213,13 +216,15 @@ export default function Dashboard() {
       </header>
 
       {/* Metrics Grid */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 stagger-children">
+      <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 stagger-children">
         <MetricBox icon={<Users size={18} />} label="Leads Ativos" value={metrics.totalLeads} color="indigo" />
         <MetricBox icon={<Target size={18} />} label="Score Médio" value={`${metrics.scoreMedio}%`} color="emerald" />
         <MetricBox icon={<Flame size={18} />} label="Leads Quentes" value={metrics.leadsQuentes} color="amber" />
         <MetricBox icon={<Users size={18} />} label="Clientes" value={metrics.clientesAtivos} color="violet" />
         <MetricBox icon={<DollarSign size={18} />} label="MRR" value={`€${metrics.mrr.toLocaleString('pt-PT')}`} color="emerald" />
         <MetricBox icon={<TrendingUp size={18} />} label="Conversão" value={`${metrics.taxaConversao}%`} color="blue" />
+        <MetricBox icon={<DollarSign size={18} />} label="Pipeline" value={`€${metrics.pipelineValue.toLocaleString('pt-PT')}`} color="indigo" />
+        <MetricBox icon={<ArrowUpRight size={18} />} label="A Fechar" value={`€${metrics.propostaValue.toLocaleString('pt-PT')}`} color="amber" />
       </section>
 
       {/* Mini Pipeline */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart } from 'lucide-react';
+import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart, History, ArrowRight } from 'lucide-react';
 import { LeadData } from './LeadCard';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/servicePortfolio';
@@ -14,12 +14,32 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [catalogoServicos, setCatalogoServicos] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'detalhes' | 'timeline'>('detalhes');
+  const [timeline, setTimeline] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   useEffect(() => {
     supabase.from('catalogo_servicos').select('*').then(({ data }) => {
       if (data) setCatalogoServicos(data);
     });
   }, []);
+
+  // Fetch timeline for this lead
+  const fetchTimeline = async () => {
+    setTimelineLoading(true);
+    const { data } = await supabase
+      .from('atividade_log')
+      .select('*')
+      .eq('entidade_id', lead.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (data) setTimeline(data);
+    setTimelineLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'timeline') fetchTimeline();
+  }, [activeTab]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -63,16 +83,22 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
       const data = await res.json();
       if (data.analysis) {
         const { ticket_estimado_mensal, dor_identificada, servico_primario, argumento_venda, copy_icebreaker } = data.analysis;
+        const scraped = data.scraped || {};
         
+        const updatePayload: any = { 
+          ticket_estimado: ticket_estimado_mensal,
+          dor_identificada,
+          servico_primario,
+          argumento_venda,
+          copy_icebreaker
+        };
+        if (scraped.email) updatePayload.email_extraido = scraped.email;
+        if (scraped.instagram) updatePayload.instagram = scraped.instagram;
+        if (scraped.facebook) updatePayload.facebook = scraped.facebook;
+
         const { error } = await supabase
           .from('leads_prospeccao')
-          .update({ 
-            ticket_estimado: ticket_estimado_mensal,
-            dor_identificada,
-            servico_primario,
-            argumento_venda,
-            copy_icebreaker
-          })
+          .update(updatePayload)
           .eq('id', lead.id);
 
         if (!error) {
@@ -82,9 +108,20 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
             dor_identificada,
             servico_primario,
             argumento_venda,
-            copy_icebreaker
+            copy_icebreaker,
+            ...(scraped.email && { email_extraido: scraped.email }),
+            ...(scraped.instagram && { instagram: scraped.instagram }),
+            ...(scraped.facebook && { facebook: scraped.facebook }),
           }));
         }
+
+        // Log AI analysis activity
+        await supabase.from('atividade_log').insert({
+          entidade_tipo: 'lead',
+          entidade_id: lead.id,
+          acao: `IA analisou Lead`,
+          detalhes: `Score IA: ${data.analysis.score_ia || 'N/A'} | Serviço: ${servico_primario} | Ticket: €${ticket_estimado_mensal}`,
+        });
       }
     } catch (err) {
       console.error(err);
@@ -117,8 +154,48 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
           <p className="text-xs text-gray-500 mt-2">{getClassificacaoLabel(classif)}</p>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-white/5 px-6 md:px-8">
+          <button onClick={() => setActiveTab('detalhes')} className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${activeTab === 'detalhes' ? 'text-indigo-400 border-indigo-400' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
+            Detalhes
+          </button>
+          <button onClick={() => setActiveTab('timeline')} className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 flex items-center gap-1.5 ${activeTab === 'timeline' ? 'text-indigo-400 border-indigo-400' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
+            <History size={13} /> Timeline
+          </button>
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar space-y-6">
+
+          {activeTab === 'timeline' && (
+            <div className="space-y-1">
+              {timelineLoading ? (
+                <p className="text-gray-500 text-sm text-center py-8 animate-pulse">A carregar histórico...</p>
+              ) : timeline.length === 0 ? (
+                <div className="text-center py-12">
+                  <History size={32} className="text-gray-700 mx-auto mb-3" />
+                  <p className="text-gray-600 text-sm">Sem atividade registada para este lead</p>
+                  <p className="text-gray-700 text-xs mt-1">Mova o lead no Kanban ou analise com IA para gerar histórico</p>
+                </div>
+              ) : (
+                timeline.map((entry, i) => (
+                  <div key={entry.id || i} className="flex gap-3 py-3 border-b border-white/5 last:border-0">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-2.5 h-2.5 rounded-full mt-1 ${entry.acao?.includes('Pipeline') ? 'bg-indigo-500' : entry.acao?.includes('IA') ? 'bg-emerald-500' : 'bg-gray-600'}`} />
+                      {i < timeline.length - 1 && <div className="w-px flex-1 bg-white/5 mt-1" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-200 font-medium">{entry.acao}</p>
+                      {entry.detalhes && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{entry.detalhes}</p>}
+                      <p className="text-[10px] text-gray-700 mt-1">{new Date(entry.created_at).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {activeTab === 'detalhes' && (<>
           {/* Quick Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <InfoBox icon={<Star size={16} className="text-yellow-400" />} label="Google Rating" value={`${lead.rating_google || 'N/A'} (${lead.total_avaliacoes || 0} reviews)`} />
@@ -251,6 +328,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
               </div>
             </div>
           )}
+          </>)}
         </div>
 
         {/* Footer */}
