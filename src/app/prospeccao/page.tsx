@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, Sparkles, MapPin, Loader2, ChevronDown, ChevronUp, Copy, MessageCircle, AlertTriangle, CheckCircle2, Target, Globe, Camera, ShoppingCart } from 'lucide-react';
 import { buscarLeads, LeadBruto } from '@/lib/geminiClient';
 import { calcularScore, isSegmentoAltaDemanda } from '@/lib/leadScoring';
@@ -31,6 +31,13 @@ export default function ProspeccaoPage() {
   const [searchDone, setSearchDone] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [quantidade, setQuantidade] = useState(8);
+  const [catalogoServicos, setCatalogoServicos] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase.from('catalogo_servicos').select('*').then(({ data }) => {
+      if (data) setCatalogoServicos(data);
+    });
+  }, []);
 
   const handleSearch = async () => {
     if (!segmento.trim() || !cidade.trim()) return;
@@ -69,8 +76,8 @@ export default function ProspeccaoPage() {
         if (!lead.tem_ecommerce) servicos_recomendados.push('E-Commerce');
 
         const potencial_receita = servicos_recomendados.reduce((acc, nome) => {
-          const s = SERVICOS.find(sv => sv.nome === nome);
-          return acc + (s ? s.mensal : 0);
+          const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+          return acc + (s ? s.valor_mensal : 0);
         }, 0);
 
         return {

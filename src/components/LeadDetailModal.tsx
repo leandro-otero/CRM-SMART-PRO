@@ -3,13 +3,23 @@
 import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart } from 'lucide-react';
 import { LeadData } from './LeadCard';
 import { useState, useEffect } from 'react';
-import { formatCurrency, SERVICOS } from '@/lib/servicePortfolio';
+import { formatCurrency } from '@/lib/servicePortfolio';
 import { getClassificacaoLabel } from '@/lib/leadScoring';
+import { supabase } from '@/lib/supabaseClient';
 
 interface LeadDetailModalProps { lead: LeadData; onClose: () => void; }
 
-export const LeadDetailModal = ({ lead, onClose }: LeadDetailModalProps) => {
+export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalProps) => {
+  const [lead, setLead] = useState<LeadData>(initialLead);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [catalogoServicos, setCatalogoServicos] = useState<any[]>([]);
+
+  useEffect(() => {
+    supabase.from('catalogo_servicos').select('*').then(({ data }) => {
+      if (data) setCatalogoServicos(data);
+    });
+  }, []);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -21,6 +31,61 @@ export const LeadDetailModal = ({ lead, onClose }: LeadDetailModalProps) => {
   const classif = lead.classificacao || 'FRIO';
   const emoji = classif === 'QUENTE' ? '🔥' : classif === 'MORNO' ? '⚡' : classif === 'FRIO' ? '❄️' : '⬇️';
   const badgeClass = `badge-${classif.toLowerCase()}`;
+
+  const handleAnalisar = async () => {
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch('/api/leads/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          lead: {
+            nome: lead.nome_empresa,
+            rating: lead.rating_google || 0,
+            total_avaliacoes: lead.total_avaliacoes || 0,
+            tem_site: lead.tem_site || false,
+            tem_instagram: lead.tem_instagram || false,
+            google_maps_completo: lead.google_maps_completo || false,
+            tem_whatsapp_business: lead.tem_whatsapp_business || false,
+            observacoes: lead.observacoes_ia || lead.dor_identificada || '',
+            telefone: lead.whatsapp_extraido || ''
+          },
+          nicho: lead.nicho,
+          localizacao: lead.morada || 'Portugal'
+        })
+      });
+      const data = await res.json();
+      if (data.analysis) {
+        const { ticket_estimado_mensal, dor_identificada, servico_primario, argumento_venda, copy_icebreaker } = data.analysis;
+        
+        const { error } = await supabase
+          .from('leads_prospeccao')
+          .update({ 
+            ticket_estimado: ticket_estimado_mensal,
+            dor_identificada,
+            servico_primario,
+            argumento_venda,
+            copy_icebreaker
+          })
+          .eq('id', lead.id);
+
+        if (!error) {
+          setLead(prev => ({
+            ...prev,
+            ticket_estimado: ticket_estimado_mensal,
+            dor_identificada,
+            servico_primario,
+            argumento_venda,
+            copy_icebreaker
+          }));
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const handleCopyScript = () => {
     navigator.clipboard.writeText(lead.copy_icebreaker || '');
@@ -99,7 +164,30 @@ export const LeadDetailModal = ({ lead, onClose }: LeadDetailModalProps) => {
 
           {/* AI Analysis */}
           <div className="bg-indigo-500/5 border border-indigo-500/10 p-5 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2"><TrendingUp size={16} className="text-emerald-400" />Análise Estratégica</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2"><TrendingUp size={16} className="text-emerald-400" />Análise Estratégica</h3>
+              <button 
+                onClick={handleAnalisar} 
+                disabled={isAnalyzing}
+                className="btn-primary py-1.5 px-3 text-xs flex items-center gap-2"
+              >
+                {isAnalyzing ? <span className="animate-spin text-lg leading-none">⟳</span> : <Zap size={14} />}
+                {isAnalyzing ? 'Analisando...' : 'Analisar Mercado com IA'}
+              </button>
+            </div>
+            
+            {lead.ticket_estimado && (
+              <div className="bg-indigo-500/20 p-4 rounded-xl border border-indigo-500/30 shadow-[inset_0_0_20px_rgba(99,102,241,0.1)]">
+                <p className="text-[10px] text-indigo-300 uppercase tracking-wider font-bold mb-1">Ticket Estimado de Mercado (MRR)</p>
+                <div className="flex items-end gap-2">
+                  <p className="text-2xl text-white font-extrabold flex items-center gap-1">
+                    <DollarSign size={24} className="text-emerald-400"/>
+                    {formatCurrency(lead.ticket_estimado)}
+                  </p>
+                  <span className="text-xs text-indigo-300 font-normal mb-1">/mês na região de {lead.morada ? lead.morada.split(',')[0] : 'Portugal'}</span>
+                </div>
+              </div>
+            )}
             <div>
               <p className="text-[10px] text-emerald-400/70 uppercase tracking-wider font-bold mb-1">Dor Identificada</p>
               <p className="text-sm text-gray-200">{lead.dor_identificada}</p>
@@ -122,11 +210,11 @@ export const LeadDetailModal = ({ lead, onClose }: LeadDetailModalProps) => {
               <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Pacote Recomendado</h3>
               <div className="space-y-2">
                 {lead.servicos_recomendados.map((nome, i) => {
-                  const s = SERVICOS.find(sv => sv.nome === nome);
+                  const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
                   return (
                     <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
                       <span className="text-sm text-gray-200 font-medium">{nome}</span>
-                      {s && <span className="text-sm text-emerald-400 font-bold">{formatCurrency(s.setup)} + {formatCurrency(s.mensal)}/mês</span>}
+                      {s && <span className="text-sm text-emerald-400 font-bold">{formatCurrency(s.valor_setup)} + {formatCurrency(s.valor_mensal)}/mês</span>}
                     </div>
                   );
                 })}

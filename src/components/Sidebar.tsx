@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/components/AuthProvider';
 import {
   LayoutDashboard,
   Search,
@@ -14,6 +15,9 @@ import {
   CheckSquare,
   Menu,
   X,
+  Briefcase,
+  ShieldAlert,
+  LogOut
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabaseClient';
@@ -24,11 +28,13 @@ const NAV_ITEMS = [
   { href: '/pipeline', label: 'Pipeline', icon: Kanban },
   { href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
   { href: '/clientes', label: 'Clientes', icon: Users },
+  { href: '/servicos', label: 'Catálogo', icon: Briefcase },
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign },
 ];
 
 export const Sidebar = () => {
   const pathname = usePathname();
+  const { session, userProfile, signOut } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [overdueCount, setOverdueCount] = useState(0);
 
@@ -55,6 +61,8 @@ export const Sidebar = () => {
 
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  if (pathname === '/login') return null;
 
   const navContent = (
     <>
@@ -101,17 +109,42 @@ export const Sidebar = () => {
             </Link>
           );
         })}
+        
+        {userProfile?.role === 'admin' && (
+          <>
+            <p className="text-[10px] text-gray-600 uppercase tracking-[0.2em] font-bold px-6 mb-2 mt-4">Administração</p>
+            <Link
+              href="/equipa"
+              onClick={() => setMobileOpen(false)}
+              className={`sidebar-link relative ${pathname === '/equipa' ? 'active' : ''}`}
+            >
+              <ShieldAlert size={18} strokeWidth={pathname === '/equipa' ? 2.5 : 1.5} />
+              <span>Equipa</span>
+              {pathname === '/equipa' && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-accent-light animate-pulse" />
+              )}
+            </Link>
+          </>
+        )}
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-white/5">
+      <div className="p-4 border-t border-white/5 flex flex-col gap-3">
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5">
-          <Activity size={14} className="text-emerald-400" />
-          <div>
-            <p className="text-[10px] text-gray-500 font-semibold">Sistema</p>
-            <p className="text-xs text-emerald-400 font-bold">Online</p>
+          <Activity size={14} className="text-emerald-400 shrink-0" />
+          <div className="flex-1 overflow-hidden">
+            <p className="text-[10px] text-gray-500 font-semibold truncate">{userProfile?.nome || 'Sistema'}</p>
+            <p className="text-xs text-emerald-400 font-bold capitalize">{userProfile?.role || 'Online'}</p>
           </div>
         </div>
+        
+        <button 
+          onClick={signOut}
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors w-full text-left"
+        >
+          <LogOut size={16} />
+          <span className="text-sm font-semibold">Sair da Conta</span>
+        </button>
       </div>
     </>
   );

@@ -3,16 +3,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { formatCurrency } from '@/lib/servicePortfolio';
-import { DollarSign, TrendingUp, PieChart, Calendar, AlertTriangle, RefreshCw, Plus, X, Trash2 } from 'lucide-react';
+import { DollarSign, TrendingUp, PieChart, Calendar, AlertTriangle, RefreshCw, Plus, X, Trash2, Zap } from 'lucide-react';
 
 interface Cliente { id: string; nome_empresa: string; status: string; }
 interface Servico { id: string; cliente_id: string; nome_servico: string; tipo: string; valor: number; status: string; data_vencimento: string; }
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; recorrente: boolean; }
+interface Lead { id: string; status_funil: string; ticket_estimado: number; }
 
 export default function FinanceiroPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [despesas, setDespesas] = useState<Despesa[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDespesaForm, setShowDespesaForm] = useState(false);
@@ -22,17 +24,20 @@ export default function FinanceiroPage() {
     setLoading(true);
     setError(null);
     try {
-      const [cR, sR, dR] = await Promise.all([
+      const [cR, sR, dR, lR] = await Promise.all([
         supabase.from('clientes').select('id, nome_empresa, status'),
         supabase.from('servicos_contratados').select('*'),
         supabase.from('despesas').select('*'),
+        supabase.from('leads_prospeccao').select('id, status_funil, ticket_estimado')
       ]);
       if (cR.error) throw cR.error;
       if (sR.error) throw sR.error;
       if (dR.error) throw dR.error;
+      if (lR.error) throw lR.error;
       setClientes(cR.data || []);
       setServicos(sR.data || []);
       setDespesas(dR.data || []);
+      setLeads(lR.data || []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar dados financeiros';
       setError(message);
@@ -88,6 +93,13 @@ export default function FinanceiroPage() {
     const lucro = totalBruto - gastos;
     const margem = totalBruto > 0 ? Math.round((lucro / totalBruto) * 100) : 0;
 
+    // Pipeline Projection based on real market AI tickets
+    const leadsPipeline = leads.filter(l => ['Proposta Enviada', 'Negociação'].includes(l.status_funil) && l.ticket_estimado > 0);
+    const projecaoPipeline = leadsPipeline.reduce((a, l) => {
+      const prob = l.status_funil === 'Proposta Enviada' ? 0.3 : 0.7;
+      return a + (l.ticket_estimado * prob);
+    }, 0);
+
     // Revenue per client
     const receitaPorCliente = clientes.map(c => {
       const cs = servicos.filter(s => s.cliente_id === c.id && s.status === 'ativo');
@@ -105,8 +117,8 @@ export default function FinanceiroPage() {
       .sort((a, b) => new Date(a.data_vencimento).getTime() - new Date(b.data_vencimento).getTime())
       .slice(0, 8);
 
-    return { mrr, setupTotal, anualTotal, arr, totalBruto, gastos, lucro, margem, receitaPorCliente, vencimentos };
-  }, [clientes, servicos, despesas]);
+    return { mrr, setupTotal, anualTotal, arr, totalBruto, gastos, lucro, margem, receitaPorCliente, vencimentos, projecaoPipeline };
+  }, [clientes, servicos, despesas, leads]);
 
   if (loading) return <div className="flex items-center justify-center h-screen text-indigo-400 font-bold animate-pulse">A carregar dados financeiros...</div>;
 
@@ -159,6 +171,21 @@ export default function FinanceiroPage() {
           <div className="text-center p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/10">
             <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Lucro ({metrics.margem}%)</p>
             <p className="text-2xl font-extrabold text-indigo-400 mt-1">{formatCurrency(metrics.lucro)}</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Pipeline Projection */}
+      <section className="glass-card p-6 border-emerald-500/30 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)]">
+        <h2 className="text-lg font-bold text-emerald-400 mb-4 flex items-center gap-2"><Zap size={20} />Projeção de Pipeline (Mercado Real)</h2>
+        <div className="flex flex-col sm:flex-row gap-6 items-center">
+          <div className="flex-1">
+            <p className="text-sm text-gray-300 mb-2">Estimativa de receitas futuras com base na probabilidade de fecho dos leads ativos (Proposta: 30%, Negociação: 70%).</p>
+            <p className="text-xs text-gray-400">Os valores projetados são definidos pela Inteligência Artificial de acordo com o nicho, concorrentes e o poder de compra da região de cada lead.</p>
+          </div>
+          <div className="text-center p-6 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 min-w-[200px]">
+            <p className="text-xs text-emerald-300/80 font-semibold uppercase tracking-wider mb-1">+ MRR Projetado</p>
+            <p className="text-3xl font-extrabold text-emerald-400">{formatCurrency(metrics.projecaoPipeline)}</p>
           </div>
         </div>
       </section>
