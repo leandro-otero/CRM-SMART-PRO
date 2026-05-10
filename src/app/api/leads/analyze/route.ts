@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createClient } from '@supabase/supabase-js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
@@ -19,6 +20,19 @@ interface LeadParaAnalise {
 
 export async function POST(request: Request) {
   try {
+    // 1. Verify Authentication
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    );
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
     const { lead, nicho, localizacao }: { lead: LeadParaAnalise; nicho: string; localizacao: string } = await request.json();
 
     if (!GEMINI_API_KEY) {
@@ -44,37 +58,25 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash',
+      generationConfig: { responseMimeType: "application/json" }
+    });
 
-    const prompt = `És o Motor de Inteligência Comercial de uma agência de Transformação Digital portuguesa.
+    const prompt = `Analisa este negócio local e gera os outputs estruturados.
+Nicho: ${nicho}. Local: ${localizacao}.
+DADOS: Nome: ${lead.nome}, Rating: ${lead.rating} (${lead.total_avaliacoes} aval), Site: ${lead.tem_site ? 'Sim' : 'Não'}, Insta: ${lead.tem_instagram ? 'Sim' : 'Não'}, Maps completo: ${lead.google_maps_completo ? 'Sim' : 'Não'}, Wpp: ${lead.tem_whatsapp_business ? 'Sim' : 'Não'}, Obs: ${lead.observacoes}.
 
-Analisa este negócio local e devolve APENAS um JSON válido com a estrutura abaixo.
+REGRAS: pt-PT rigoroso, zero erros. Icebreaker sem "comprar", "preço" ou "vender".
 
-DADOS DO NEGÓCIO:
-- Nome: ${lead.nome}
-- Nicho: ${nicho}
-- Localização/Região: ${localizacao}
-- Rating Google: ${lead.rating} (${lead.total_avaliacoes} avaliações)
-- Tem website: ${lead.tem_site ? 'Sim' : 'Não'}
-- Instagram detetado: ${lead.tem_instagram ? 'Sim' : 'Não'}
-- Google Maps completo: ${lead.google_maps_completo ? 'Sim' : 'Não'}
-- WhatsApp Business: ${lead.tem_whatsapp_business ? 'Sim' : 'Não'}
-- Observações: ${lead.observacoes}
-
-REGRAS DE SCORING E ABORDAGEM:
-1. O texto DEVE estar em Português de Portugal (pt-PT).
-2. Sem erros ortográficos.
-3. Não escrevas "Script de Abordagem:" ou qualquer título antes do texto, apenas o corpo da mensagem.
-4. O Icebreaker deve ser profissional, direto e elegante, sem usar as palavras "comprar", "preço" ou "vender".
-
-Responde APENAS com este JSON (sem markdown, sem código):
+JSON:
 {
-  "dor_identificada": "frase curta e impactante da principal dor digital",
-  "servico_primario": "nome exato do serviço mais urgente",
-  "argumento_venda": "argumento focado na DOR, não na funcionalidade (máx 2 frases)",
-  "copy_icebreaker": "Apenas o texto da mensagem pronta a enviar no WhatsApp. 3 parágrafos curtos. Tom consultor. Menciona dado real. CTA para áudio.",
+  "dor_identificada": "frase da dor",
+  "servico_primario": "serviço urgente",
+  "argumento_venda": "argumento focado na dor",
+  "copy_icebreaker": "mensagem Wpp",
   "temperatura": "QUENTE|MORNO|FRIO",
-  "score_ia": número entre 0 e 100,
+  "score_ia": numero,
   "urgencia": "ALTA|MEDIA|BAIXA",
   "setor": "Saúde|Turismo|Comércio|Indústria|Serviços B2B|Gastronomia|Automóvel|Outros",
   "ticket_estimado_mensal": numero inteiro estimado em euros (MRR realista)
@@ -83,11 +85,8 @@ Responde APENAS com este JSON (sem markdown, sem código):
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();
 
-    // Parse JSON from response (handle possible markdown wrapping)
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Invalid JSON from Gemini');
-
-    const analysis = JSON.parse(jsonMatch[0]);
+    // Parse JSON
+    const analysis = JSON.parse(text);
 
     return NextResponse.json({ mode: 'ai', analysis });
   } catch (err) {

@@ -1,24 +1,24 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-// Create a Supabase client with the service role key to bypass RLS and Auth rules
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
 export async function POST(request: Request) {
   try {
-    const { email, password, nome, role } = await request.json();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-    if (!supabaseServiceKey) {
-      return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada' }, { status: 500 });
+    if (!supabaseServiceKey || !supabaseUrl) {
+      return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY ou URL não configurada' }, { status: 500 });
     }
+
+    // Create a Supabase client with the service role key to bypass RLS and Auth rules
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
+    const { email, password, nome, role } = await request.json();
 
     if (!email || !password || !nome) {
       return NextResponse.json({ error: 'E-mail, palavra-passe e nome são obrigatórios' }, { status: 400 });

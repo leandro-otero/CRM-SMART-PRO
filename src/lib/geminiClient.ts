@@ -4,6 +4,8 @@
 // falls back to simulation when API key is missing
 // ═══════════════════════════════════════
 
+import { supabase } from '@/lib/supabaseClient';
+
 export interface LeadBruto {
   place_id?: string;
   nome: string;
@@ -29,10 +31,16 @@ export async function buscarLeads(
   quantidade: number = 10
 ): Promise<{ leads: LeadBruto[]; mode: 'api' | 'simulation' | 'error' | 'api_error' }> {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || '';
+
     // Call real API route (which uses Google Places API)
     const res = await fetch('/api/leads/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({ segmento, cidade, quantidade }),
     });
 

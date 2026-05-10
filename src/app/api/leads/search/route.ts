@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 // Google Places API (Text Search) — same approach as the existing Google Apps Script
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY || '';
@@ -74,6 +75,20 @@ export async function POST(request: Request) {
     }
     rateLimitMap.set(ip, rateData);
 
+    // 1. Verify Authentication
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    
+    const token = authHeader.split(' ')[1];
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    );
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // 2. Process Request
     const { segmento, cidade, quantidade = 10 } = await request.json();
 
     if (!segmento || !cidade) {

@@ -35,9 +35,15 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
   const handleAnalisar = async () => {
     setIsAnalyzing(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || '';
+
       const res = await fetch('/api/leads/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ 
           lead: {
             nome: lead.nome_empresa,
