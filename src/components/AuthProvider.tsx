@@ -26,28 +26,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const fetchSession = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      setSession(currentSession);
-      
-      if (currentSession) {
-        const { data: profile } = await supabase.from('perfis').select('*').eq('id', currentSession.user.id).single();
-        setUserProfile(profile);
+      try {
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        setSession(currentSession);
+        
+        if (currentSession) {
+          const { data: profile } = await supabase.from('perfis').select('*').eq('id', currentSession.user.id).single();
+          setUserProfile(profile);
+        }
+      } catch (err) {
+        console.error('Auth check error:', err);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     };
 
     fetchSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      setSession(currentSession);
-      if (currentSession) {
-        const { data: profile } = await supabase.from('perfis').select('*').eq('id', currentSession.user.id).single();
-        setUserProfile(profile);
-      } else {
-        setUserProfile(null);
+      try {
+        setSession(currentSession);
+        if (currentSession) {
+          const { data: profile } = await supabase.from('perfis').select('*').eq('id', currentSession.user.id).single();
+          setUserProfile(profile);
+        } else {
+          setUserProfile(null);
+        }
+      } catch (err) {
+        console.error('Auth state change error:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {
