@@ -61,7 +61,8 @@ export const LeadCard = ({ lead, onSelect }: LeadCardProps) => {
 
   const handleWhatsApp = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const num = lead.whatsapp_extraido?.replace(/\D/g, '');
+    let num = lead.whatsapp_extraido?.replace(/\D/g, '');
+    if (num && num.length === 9) num = '351' + num;
     if (num) window.open(`https://wa.me/${num}`, '_blank');
   };
 

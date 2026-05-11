@@ -151,11 +151,12 @@ export default function ProspeccaoPage() {
 
       if (error) throw error;
 
-      await supabase.from('atividade_log').insert({
+      // Fire and forget activity log to avoid blocking UI
+      supabase.from('atividade_log').insert({
         entidade_tipo: 'lead',
         acao: `Novo lead guardado: ${lead.nome}`,
         detalhes: `Score: ${lead.score} | Classificação: ${lead.classificacao} | Segmento: ${segmento}`,
-      });
+      }).then();
 
       setSaveStatus(prev => ({ ...prev, [lead.nome]: 'saved' }));
       showToast(`"${lead.nome}" guardado no Pipeline!`, 'success');
@@ -346,7 +347,7 @@ export default function ProspeccaoPage() {
                         <PresenceBadge 
                           label="WhatsApp" 
                           has={lead.tem_whatsapp_business} 
-                          url={`https://wa.me/${lead.telefone?.replace(/\D/g, '') || ''}`}
+                          url={`https://wa.me/${lead.telefone?.replace(/\D/g, '').length === 9 ? '351' + lead.telefone.replace(/\D/g, '') : lead.telefone?.replace(/\D/g, '') || ''}`}
                           icon={MessageCircle}
                         />
                         <PresenceBadge 
@@ -394,7 +395,8 @@ export default function ProspeccaoPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            const num = lead.telefone.replace(/\D/g, '');
+                            let num = lead.telefone.replace(/\D/g, '');
+                            if (num.length === 9) num = '351' + num;
                             window.open(`https://wa.me/${num}`, '_blank');
                           }}
                           className="btn-success flex items-center gap-2 text-sm"

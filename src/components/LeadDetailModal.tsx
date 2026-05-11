@@ -227,7 +227,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
               <PresenceItem 
                 label="WhatsApp" 
                 has={lead.tem_whatsapp_business} 
-                url={lead.whatsapp_extraido ? `https://wa.me/${lead.whatsapp_extraido.replace(/\D/g, '')}` : undefined}
+                url={lead.whatsapp_extraido ? `https://wa.me/${lead.whatsapp_extraido.replace(/\D/g, '').length === 9 ? '351' + lead.whatsapp_extraido.replace(/\D/g, '') : lead.whatsapp_extraido.replace(/\D/g, '')}` : undefined}
                 icon={MessageCircle}
               />
               <PresenceItem 
@@ -310,7 +310,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
             <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Canais de Contacto</h3>
             <div className="flex flex-wrap gap-2">
               {lead.website && <a href={lead.website} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-all"><Globe size={14} />Website <ExternalLink size={12} /></a>}
-              {lead.whatsapp_extraido && <a href={`https://wa.me/${lead.whatsapp_extraido.replace(/\D/g, '')}`} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 transition-all font-bold"><MessageCircle size={14} />WhatsApp</a>}
+              {lead.whatsapp_extraido && <a href={`https://wa.me/${lead.whatsapp_extraido.replace(/\D/g, '').length === 9 ? '351' + lead.whatsapp_extraido.replace(/\D/g, '') : lead.whatsapp_extraido.replace(/\D/g, '')}`} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 transition-all font-bold"><MessageCircle size={14} />WhatsApp</a>}
               {lead.email_extraido && <a href={`mailto:${lead.email_extraido}`} className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-all"><Mail size={14} />E-mail</a>}
               {lead.instagram && <a href={lead.instagram} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/20 rounded-xl text-xs text-pink-400 transition-all"><Camera size={14} />Instagram</a>}
             </div>
@@ -334,7 +334,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
         {/* Footer */}
         <div className="p-5 bg-white/[0.03] border-t border-white/5 flex gap-3">
           <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
-          <button onClick={() => { const num = lead.whatsapp_extraido?.replace(/\D/g, ''); if (num) window.open(`https://wa.me/${num}`, '_blank'); }} className="flex-1 btn-primary flex items-center justify-center gap-2 text-sm">
+          <button onClick={() => { let num = lead.whatsapp_extraido?.replace(/\D/g, ''); if (num && num.length === 9) num = '351' + num; if (num) window.open(`https://wa.me/${num}`, '_blank'); }} className="flex-1 btn-primary flex items-center justify-center gap-2 text-sm">
             <MessageCircle size={16} />Iniciar Conversa
           </button>
         </div>

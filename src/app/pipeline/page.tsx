@@ -62,7 +62,8 @@ export default function PipelinePage() {
         .from('leads_prospeccao')
         .select('*')
         .not('status_funil', 'eq', 'Rejeitado')
-        .order('score_aceitacao', { ascending: false });
+        .order('score_aceitacao', { ascending: false })
+        .limit(150);
 
       if (fetchErr) throw fetchErr;
       setLeads((data || []) as LeadData[]);
