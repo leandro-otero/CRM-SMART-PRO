@@ -51,7 +51,27 @@ export default function ClientesPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+
+    let debounceTimer: NodeJS.Timeout;
+    const channel = supabase
+      .channel('clientes_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchData, 400);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos_contratados' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchData, 400);
+      })
+      .subscribe();
+
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,7 +207,7 @@ export default function ClientesPage() {
                     {cs.length > 0 && <div><p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Serviços</p>{cs.map(s => <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 mb-2"><div className="flex items-center gap-3"><FileText size={14} className="text-indigo-400" /><span className="text-sm text-gray-200">{s.nome_servico}</span><span className="text-[10px] bg-white/5 px-2 py-0.5 rounded text-gray-400 uppercase">{s.tipo}</span></div><span className="text-sm font-bold text-white">{formatCurrency(s.valor)}</span></div>)}</div>}
                     {c.notas && <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5"><p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Notas</p><p className="text-sm text-gray-300">{c.notas}</p></div>}
                     <div className="flex flex-wrap gap-2 sm:gap-3">
-                      {c.whatsapp && <button onClick={e => { e.stopPropagation(); window.open(`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`, '_blank'); }} className="btn-success flex items-center gap-2 text-sm"><MessageCircle size={14} />WhatsApp</button>}
+                      {c.whatsapp && <button onClick={e => { e.stopPropagation(); let num = c.whatsapp.replace(/\D/g, ''); if (num.length === 9) num = '351' + num; window.open(`https://wa.me/${num}`, '_blank'); }} className="btn-success flex items-center gap-2 text-sm"><MessageCircle size={14} />WhatsApp</button>}
                       <button onClick={e => { e.stopPropagation(); handleEdit(c); }} className="btn-secondary flex items-center gap-2 text-sm"><Edit2 size={14} />Editar</button>
                       <button onClick={e => { e.stopPropagation(); deleteCliente(c.id, c.nome_empresa); }} className="btn-secondary flex items-center gap-2 text-sm text-red-400"><Trash2 size={14} />Remover</button>
                     </div>

@@ -32,7 +32,7 @@ export default function TarefasPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [filtro, setFiltro] = useState<'todas' | 'pendentes' | 'concluidas' | 'alta'>('pendentes');
+  const [filtro, setFiltro] = useState<'todas' | 'pendentes' | 'concluidas' | 'alta' | 'atrasadas'>('pendentes');
   const [form, setForm] = useState({ descricao: '', tipo: 'follow-up', data_agendada: '', prioridade: 'MEDIA', lead_id: '', cliente_id: '' });
 
   const fetchData = async () => {
@@ -65,7 +65,23 @@ export default function TarefasPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+
+    let debounceTimer: NodeJS.Timeout;
+    const channel = supabase
+      .channel('tarefas_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_tarefas' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchData, 400);
+      })
+      .subscribe();
+
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,12 +114,14 @@ export default function TarefasPage() {
     if (filtro === 'pendentes') return !t.concluida;
     if (filtro === 'concluidas') return t.concluida;
     if (filtro === 'alta') return !t.concluida && t.prioridade === 'ALTA';
+    if (filtro === 'atrasadas') return !t.concluida && !!isVencida(t.data_agendada);
     return true;
   });
 
   const pendentes = tarefas.filter(t => !t.concluida).length;
   const alta = tarefas.filter(t => !t.concluida && t.prioridade === 'ALTA').length;
   const concluidas = tarefas.filter(t => t.concluida).length;
+  const vencidas = tarefas.filter(t => !t.concluida && isVencida(t.data_agendada)).length;
 
   const isVencida = (data: string | null) => data && new Date(data) < new Date() && new Date(data).toDateString() !== new Date().toDateString();
   const isHoje = (data: string | null) => data && new Date(data).toDateString() === new Date().toDateString();
@@ -141,6 +159,10 @@ export default function TarefasPage() {
         <div className="glass-card p-4 flex items-center gap-3">
           <CheckCircle2 size={18} className="text-emerald-400" />
           <div><p className="text-xs text-gray-500 font-semibold">Concluídas</p><p className="text-xl font-bold text-white">{concluidas}</p></div>
+        </div>
+        <div className="glass-card p-4 flex items-center gap-3">
+          <AlertTriangle size={18} className="text-red-400" />
+          <div><p className="text-xs text-gray-500 font-semibold">Vencidas</p><p className={`text-xl font-bold ${vencidas > 0 ? 'text-red-400' : 'text-white'}`}>{vencidas}</p></div>
         </div>
       </div>
 
@@ -209,6 +231,7 @@ export default function TarefasPage() {
         {[
           { key: 'pendentes', label: 'Pendentes' },
           { key: 'alta', label: '🔴 Urgentes' },
+          { key: 'atrasadas', label: '⚠️ Vencidas' },
           { key: 'todas', label: 'Todas' },
           { key: 'concluidas', label: '✅ Concluídas' },
         ].map(f => (
@@ -236,7 +259,7 @@ export default function TarefasPage() {
             const vencida = isVencida(t.data_agendada);
             const hoje = isHoje(t.data_agendada);
             return (
-              <div key={t.id} className={`glass-card p-4 flex items-start gap-4 transition-all ${t.concluida ? 'opacity-50' : ''}`}>
+              <div key={t.id} className={`glass-card p-4 flex items-start gap-4 transition-all ${t.concluida ? 'opacity-50' : ''} ${!t.concluida && isVencida(t.data_agendada) ? 'border-red-500/40 bg-red-500/[0.04]' : ''} ${!t.concluida && isHoje(t.data_agendada) ? 'border-amber-500/30 bg-amber-500/[0.03]' : ''}`}>
                 <button onClick={() => toggleConcluida(t.id, t.concluida)} className="mt-0.5 shrink-0 text-gray-500 hover:text-indigo-400 transition-colors">
                   {t.concluida ? <CheckCircle2 size={22} className="text-emerald-400" /> : <Circle size={22} />}
                 </button>

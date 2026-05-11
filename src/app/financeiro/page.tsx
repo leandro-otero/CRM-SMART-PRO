@@ -46,7 +46,27 @@ export default function FinanceiroPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+
+    let debounceTimer: NodeJS.Timeout;
+    const channel = supabase
+      .channel('financeiro_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos_contratados' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchData, 400);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'despesas' }, () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(fetchData, 400);
+      })
+      .subscribe();
+
+    return () => {
+      clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const handleAddDespesa = async (e: React.FormEvent) => {
     e.preventDefault();
