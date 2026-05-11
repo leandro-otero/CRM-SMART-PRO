@@ -42,7 +42,7 @@ export const Sidebar = () => {
     const fetchOverdue = async () => {
       const today = new Date().toISOString().split('T')[0];
       const { count, error } = await supabase
-        .from('tarefas')
+        .from('pipeline_tarefas')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pendente')
         .lt('data_vencimento', today);
@@ -56,7 +56,7 @@ export const Sidebar = () => {
     
     const channel = supabase
       .channel('sidebar_tarefas')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tarefas' }, fetchOverdue)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_tarefas' }, fetchOverdue)
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
