@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, memo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 
 interface KanbanColumnProps {
@@ -10,7 +10,7 @@ interface KanbanColumnProps {
   children?: ReactNode;
 }
 
-export const KanbanColumn = ({ id, title, count, children }: KanbanColumnProps) => {
+export const KanbanColumn = memo(({ id, title, count, children }: KanbanColumnProps) => {
   const { isOver, setNodeRef } = useDroppable({ id });
 
   const isOverClass = isOver
@@ -39,4 +39,6 @@ export const KanbanColumn = ({ id, title, count, children }: KanbanColumnProps) 
       </div>
     </div>
   );
-};
+});
+
+KanbanColumn.displayName = 'KanbanColumn';

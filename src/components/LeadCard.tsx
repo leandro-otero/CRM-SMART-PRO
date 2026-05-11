@@ -1,7 +1,7 @@
 'use client';
 
 import { Copy, MessageCircle, AlertCircle, Zap, Clock, Flame } from 'lucide-react';
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 
 export interface LeadData {
@@ -47,7 +47,7 @@ interface LeadCardProps {
   onSelect: (lead: LeadData) => void;
 }
 
-export const LeadCard = ({ lead, onSelect }: LeadCardProps) => {
+export const LeadCard = memo(({ lead, onSelect }: LeadCardProps) => {
   const [copiado, setCopiado] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
@@ -162,4 +162,6 @@ export const LeadCard = ({ lead, onSelect }: LeadCardProps) => {
       </div>
     </div>
   );
-};
+});
+
+LeadCard.displayName = 'LeadCard';
