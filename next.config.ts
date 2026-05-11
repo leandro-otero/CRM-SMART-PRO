@@ -1,10 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // @ts-ignore
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Empty config for now
 };
 
 export default nextConfig;
