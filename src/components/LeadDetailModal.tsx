@@ -313,6 +313,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
               {lead.whatsapp_extraido && <a href={`https://wa.me/${lead.whatsapp_extraido.replace(/\D/g, '').length === 9 ? '351' + lead.whatsapp_extraido.replace(/\D/g, '') : lead.whatsapp_extraido.replace(/\D/g, '')}`} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 transition-all font-bold"><MessageCircle size={14} />WhatsApp</a>}
               {lead.email_extraido && <a href={`mailto:${lead.email_extraido}`} className="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-all"><Mail size={14} />E-mail</a>}
               {lead.instagram && <a href={lead.instagram} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/20 rounded-xl text-xs text-pink-400 transition-all"><Camera size={14} />Instagram</a>}
+              {lead.facebook && <a href={lead.facebook} target="_blank" className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-xs text-blue-400 transition-all"><Globe size={14} />Facebook</a>}
             </div>
           </div>
 

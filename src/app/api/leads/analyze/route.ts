@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     if (lead.tem_site && lead.website) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
         const res = await fetch(lead.website.startsWith('http') ? lead.website : `https://${lead.website}`, { signal: controller.signal });
         clearTimeout(timeoutId);
         if (res.ok) {
@@ -66,11 +66,11 @@ export async function POST(request: Request) {
           if (htmlLower.includes('facebook.com/')) (lead as any).facebook = true;
 
           // Extract Instagram URL
-          const igMatch = html.match(/https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/i);
+          const igMatch = html.match(/https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.-]+\/?/i);
           if (igMatch) scrapedData.instagram = igMatch[0];
 
           // Extract Facebook URL
-          const fbMatch = html.match(/https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.]+\/?/i);
+          const fbMatch = html.match(/https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.-]+\/?/i);
           if (fbMatch) scrapedData.facebook = fbMatch[0];
 
           // Extract Email
