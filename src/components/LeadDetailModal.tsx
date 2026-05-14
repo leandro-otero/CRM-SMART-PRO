@@ -1,9 +1,10 @@
 'use client';
 
-import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart, History, ArrowRight } from 'lucide-react';
+import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart, History, Plus, Calendar } from 'lucide-react';
 import { LeadData } from './LeadCard';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/servicePortfolio';
+import { useToast } from '@/components/ToastProvider';
 import { getClassificacaoLabel } from '@/lib/leadScoring';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -18,11 +19,15 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
   const [timeline, setTimeline] = useState<any[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
+  const { showToast } = useToast();
   // Calculator states
   const [selectedServices, setSelectedServices] = useState<string[]>(initialLead.servicos_recomendados || []);
   const [discountRate, setDiscountRate] = useState<number>(0);
   const [finalValue, setFinalValue] = useState<number>(0);
   const [isManualFinalValue, setIsManualFinalValue] = useState(false);
+  const [showServiceDropdown, setShowServiceDropdown] = useState(false);
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
+  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     supabase.from('catalogo_servicos').select('*').then(({ data }) => {
@@ -39,6 +44,34 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
     return acc + (s?.valor_mensal || 0);
   }, 0);
+
+  const totalAnual = selectedServices.reduce((acc, nome) => {
+    const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+    return acc + (s?.valor_anual || 0);
+  }, 0);
+
+  // Auto set delivery date based on max delivery time if not set
+  useEffect(() => {
+    if (selectedServices.length > 0 && !deliveryDate && catalogoServicos.length > 0) {
+      let maxDays = 0;
+      selectedServices.forEach(nome => {
+        const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+        if (s && s.tempo_entrega) {
+          const match = s.tempo_entrega.match(/\d+/);
+          if (match) maxDays = Math.max(maxDays, parseInt(match[0]));
+        }
+      });
+      if (maxDays > 0) {
+        const d = new Date();
+        d.setDate(d.getDate() + maxDays);
+        setDeliveryDate(d.toISOString().split('T')[0]);
+      } else {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        setDeliveryDate(d.toISOString().split('T')[0]);
+      }
+    }
+  }, [selectedServices, catalogoServicos]);
 
   useEffect(() => {
     if (!isManualFinalValue) {
@@ -64,6 +97,77 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     setSelectedServices(prev => 
       prev.includes(nome) ? prev.filter(n => n !== nome) : [...prev, nome]
     );
+  };
+
+  const handleConfirmValores = async () => {
+    setIsConfirming(true);
+    try {
+      await supabase.from('leads_prospeccao').update({ status_funil: 'Fechado' }).eq('id', lead.id);
+
+      let clientId = null;
+      const { data: existingClient } = await supabase.from('clientes').select('id').eq('nome_empresa', lead.nome_empresa).single();
+      
+      if (existingClient) {
+        clientId = existingClient.id;
+        await supabase.from('clientes').update({ lead_origem_id: lead.id }).eq('id', clientId);
+      } else {
+        const { data: newClient } = await supabase.from('clientes').insert({
+          nome_empresa: lead.nome_empresa,
+          responsavel: lead.responsavel || '',
+          telefone: lead.telefone_google || '',
+          whatsapp: lead.whatsapp_extraido || '',
+          email: lead.email_extraido || '',
+          endereco: lead.morada || '',
+          segmento: lead.nicho || '',
+          lead_origem_id: lead.id,
+          status: 'ATIVO'
+        }).select().single();
+        if (newClient) clientId = newClient.id;
+      }
+
+      if (clientId && selectedServices.length > 0) {
+        const servicosToInsert: any[] = [];
+        selectedServices.forEach(nome => {
+          const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+          servicosToInsert.push({
+            cliente_id: clientId,
+            nome_servico: nome,
+            tipo: 'setup',
+            valor: s ? s.valor_setup * (1 - discountRate/100) : 0,
+            status: 'ativo'
+          });
+          if (s && s.valor_mensal > 0) servicosToInsert.push({ cliente_id: clientId, nome_servico: `${nome} (Mensal)`, tipo: 'mensal', valor: s.valor_mensal, status: 'ativo' });
+          if (s && s.valor_anual > 0) servicosToInsert.push({ cliente_id: clientId, nome_servico: `${nome} (Anual/Licença)`, tipo: 'anual', valor: s.valor_anual, status: 'ativo' });
+        });
+        await supabase.from('servicos_contratados').insert(servicosToInsert);
+      }
+
+      const tarefas = [];
+      if (deliveryDate) {
+        tarefas.push({ lead_id: lead.id, cliente_id: clientId, descricao: `Entrega do Serviço: ${selectedServices.join(', ')}`, tipo: 'follow-up', prioridade: 'ALTA', data_agendada: new Date(deliveryDate).toISOString() });
+      }
+      const upsellDate = new Date();
+      upsellDate.setDate(upsellDate.getDate() + 90);
+      tarefas.push({ lead_id: lead.id, cliente_id: clientId, descricao: `Follow-up Pós-Venda (Upsell/Cross-sell). Cliente fechado há 3 meses. Serviços originais: ${selectedServices.join(', ')}`, tipo: 'follow-up', prioridade: 'MEDIA', data_agendada: upsellDate.toISOString() });
+      await supabase.from('pipeline_tarefas').insert(tarefas);
+
+      await supabase.from('atividade_log').insert({
+        entidade_tipo: 'lead',
+        entidade_id: lead.id,
+        acao: 'Negócio Fechado',
+        detalhes: `Valores: Setup: ${formatCurrency(finalValue)} | Mensal: ${formatCurrency(totalMensal)} | Anual: ${formatCurrency(totalAnual)}. Cliente e tarefas criados.`
+      });
+
+      showToast('Negócio Fechado e Cliente gerado com sucesso!', 'success');
+      onClose();
+      setTimeout(() => window.location.reload(), 1500);
+
+    } catch (e) {
+      console.error(e);
+      showToast('Erro ao fechar negócio', 'error');
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   const handleEditPresence = async (type: string, currentUrl: string | undefined) => {
@@ -376,27 +480,52 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
           </div>
 
           {/* Services Recommended */}
-          {lead.servicos_recomendados && lead.servicos_recomendados.length > 0 && (
+          {(lead.servicos_recomendados && lead.servicos_recomendados.length > 0) || selectedServices.length > 0 ? (
             <div className="space-y-4">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Pacote Recomendado</h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Pacotes Selecionados</h3>
+              </div>
               <div className="space-y-2">
-                {lead.servicos_recomendados.map((nome, i) => {
+                {selectedServices.map((nome, i) => {
                   const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
-                  const isSelected = selectedServices.includes(nome);
                   return (
-                    <div key={i} 
-                      onClick={() => toggleService(nome)}
-                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-white/[0.03] border-white/5 opacity-60 hover:opacity-100'}`}>
+                    <div key={i} className="flex flex-col p-3 rounded-xl border bg-indigo-500/10 border-indigo-500/30 transition-all relative group">
+                      <button onClick={() => toggleService(nome)} className="absolute top-2 right-2 p-1 bg-red-500/10 text-red-400 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"><X size={14} /></button>
                       <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isSelected ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>
-                           {isSelected && <CheckCircle size={10} className="text-white" />}
+                        <div className="w-4 h-4 rounded-full border border-indigo-400 bg-indigo-500 flex items-center justify-center">
+                           <CheckCircle size={10} className="text-white" />
                         </div>
-                        <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-400'}`}>{nome}</span>
+                        <span className="text-sm font-medium text-white">{nome}</span>
                       </div>
-                      {s && <span className={`text-sm font-bold ${isSelected ? 'text-emerald-400' : 'text-gray-500'}`}>{formatCurrency(s.valor_setup)} + {formatCurrency(s.valor_mensal)}/mês</span>}
+                      {s && (
+                        <div className="mt-2 pl-7 flex flex-wrap gap-2 text-[10px] font-bold">
+                          <span className="text-gray-400 bg-black/20 px-2 py-0.5 rounded border border-white/5">Setup: <span className="text-white">{formatCurrency(s.valor_setup)}</span></span>
+                          {s.valor_mensal > 0 && <span className="text-emerald-400/80 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Mensal: <span className="text-emerald-400">{formatCurrency(s.valor_mensal)}</span></span>}
+                          {s.valor_anual > 0 && <span className="text-blue-400/80 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">Anual (Licença): <span className="text-blue-400">{formatCurrency(s.valor_anual)}</span></span>}
+                          {s.tempo_entrega && <span className="text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20 flex items-center gap-1"><Calendar size={10} /> {s.tempo_entrega}</span>}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Add Extra Service Button */}
+              <div className="relative">
+                <button onClick={() => setShowServiceDropdown(!showServiceDropdown)} className="btn-secondary w-full border border-dashed border-white/20 flex items-center justify-center gap-2 text-sm text-indigo-300 hover:border-indigo-400/50">
+                  <Plus size={16} /> Adicionar Serviço Extra
+                </button>
+                {showServiceDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-2 z-10 bg-dark-surface border border-white/10 rounded-xl shadow-2xl p-2 max-h-48 overflow-y-auto">
+                    {catalogoServicos.filter(s => !selectedServices.includes(s.nome)).map(s => (
+                      <div key={s.id} onClick={() => { toggleService(s.nome); setShowServiceDropdown(false); }} className="p-2 hover:bg-white/5 rounded-lg cursor-pointer text-sm text-gray-300 flex justify-between items-center">
+                        <span>{s.nome}</span>
+                        <span className="text-xs text-emerald-400 font-bold">+{formatCurrency(s.valor_setup)}</span>
+                      </div>
+                    ))}
+                    {catalogoServicos.filter(s => !selectedServices.includes(s.nome)).length === 0 && <p className="text-xs text-gray-500 p-2 text-center">Todos os serviços já adicionados</p>}
+                  </div>
+                )}
               </div>
               
               {/* Calculator */}
@@ -406,38 +535,54 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
                   <span className="text-white font-medium">{formatCurrency(totalSetup)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">Mensalidade:</span>
+                  <span className="text-gray-400">Total Mensalidade:</span>
                   <span className="text-emerald-400 font-bold">{formatCurrency(totalMensal)}</span>
                 </div>
-                <div className="pt-3 border-t border-white/5 flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Desconto (%)</label>
-                      <input 
-                        type="number" 
-                        value={discountRate} 
-                        onChange={(e) => handleDiscountChange(parseFloat(e.target.value) || 0)}
-                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                        min="0"
-                        max="100"
-                        step="0.1"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Valor Final Setup (€)</label>
-                      <input 
-                        type="number" 
-                        value={finalValue > 0 ? parseFloat(finalValue.toFixed(2)) : 0} 
-                        onChange={(e) => handleFinalValueChange(parseFloat(e.target.value) || 0)}
-                        className="w-full bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-3 py-2 text-sm text-white font-bold focus:outline-none focus:border-indigo-500"
-                        min="0"
-                      />
-                    </div>
+                {totalAnual > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400">Total Anual (Licenças):</span>
+                    <span className="text-blue-400 font-bold">{formatCurrency(totalAnual)}</span>
                   </div>
+                )}
+                
+                <div className="pt-3 border-t border-white/5 flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Desconto (%) no Setup</label>
+                    <input 
+                      type="number" 
+                      value={discountRate} 
+                      onChange={(e) => handleDiscountChange(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Valor Final Setup (€)</label>
+                    <input 
+                      type="number" 
+                      value={finalValue > 0 ? parseFloat(finalValue.toFixed(2)) : 0} 
+                      onChange={(e) => handleFinalValueChange(parseFloat(e.target.value) || 0)}
+                      className="w-full bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-3 py-2 text-sm text-white font-bold focus:outline-none focus:border-indigo-500"
+                      min="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-white/5">
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Data Prevista de Entrega</label>
+                  <input 
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <p className="text-[10px] text-gray-600 mt-1">Ao fechar negócio, será criada uma tarefa para esta data.</p>
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Contact Channels */}
           <div>
@@ -467,11 +612,21 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
         </div>
 
         {/* Footer */}
-        <div className="p-5 bg-white/[0.03] border-t border-white/5 flex gap-3">
+        <div className="p-5 bg-white/[0.03] border-t border-white/5 flex gap-3 flex-wrap">
           <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
-          <button onClick={() => { let num = lead.whatsapp_extraido?.replace(/\D/g, ''); if (num && num.length === 9) num = '351' + num; if (num) window.open(`https://wa.me/${num}`, '_blank'); }} className="flex-1 btn-primary flex items-center justify-center gap-2 text-sm">
+          <button onClick={() => { let num = lead.whatsapp_extraido?.replace(/\D/g, ''); if (num && num.length === 9) num = '351' + num; if (num) window.open(`https://wa.me/${num}`, '_blank'); }} className="btn-secondary flex items-center justify-center gap-2 text-sm">
             <MessageCircle size={16} />Iniciar Conversa
           </button>
+          {lead.status_funil !== 'Fechado' && (
+            <button 
+              onClick={handleConfirmValores} 
+              disabled={isConfirming}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-4 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+            >
+              {isConfirming ? <span className="animate-spin text-lg leading-none">⟳</span> : <CheckCircle size={18} />}
+              {isConfirming ? 'A Fechar Negócio...' : 'Confirmar Valores e Fechar Negócio'}
+            </button>
+          )}
         </div>
       </div>
     </div>

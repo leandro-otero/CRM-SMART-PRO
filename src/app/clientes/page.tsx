@@ -30,22 +30,28 @@ export default function ClientesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nome: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [leads, setLeads] = useState<any[]>([]);
-  const [form, setForm] = useState({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '' });
+  const [form, setForm] = useState({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '', lead_origem_id: '' as string | null });
+  const [historico, setHistorico] = useState<any[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cRes, sRes, lRes] = await Promise.all([
+      const [cRes, sRes, lRes, hRes, tRes] = await Promise.all([
         supabase.from('clientes').select('*').order('created_at', { ascending: false }),
         supabase.from('servicos_contratados').select('*'),
-        supabase.from('leads_prospeccao').select('id, nome_empresa, whatsapp_extraido, email_extraido, morada, nicho, observacoes_ia, dor_identificada').order('created_at', { ascending: false })
+        supabase.from('leads_prospeccao').select('id, nome_empresa, whatsapp_extraido, email_extraido, morada, nicho, observacoes_ia, dor_identificada').order('created_at', { ascending: false }),
+        supabase.from('atividade_log').select('*').in('entidade_tipo', ['cliente', 'lead']).order('created_at', { ascending: false }),
+        supabase.from('pipeline_tarefas').select('*').order('data_agendada', { ascending: true })
       ]);
       if (cRes.error) throw cRes.error;
       if (sRes.error) throw sRes.error;
       setClientes(cRes.data || []);
       setServicos(sRes.data || []);
       setLeads(lRes.data || []);
+      
+      const historicoCombinado = [...(hRes.data || []), ...(tRes.data || [])].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setHistorico(historicoCombinado);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar clientes';
       setError(message);
@@ -101,7 +107,7 @@ export default function ClientesPage() {
     
     setShowForm(false);
     setEditingId(null);
-    setForm({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '' });
+    setForm({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '', lead_origem_id: null });
     fetchData();
   };
 
@@ -116,7 +122,8 @@ export default function ClientesPage() {
       endereco: c.endereco || '',
       segmento: c.segmento || '',
       cnpj_nif: c.cnpj_nif || '',
-      notas: c.notas || ''
+      notas: c.notas || '',
+      lead_origem_id: c.lead_origem_id || null
     });
     setEditingId(c.id);
     setShowForm(true);
@@ -151,7 +158,7 @@ export default function ClientesPage() {
           <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3"><Users size={24} className="text-indigo-400" />Gestão de Clientes</h1>
           <p className="text-gray-500 text-sm mt-1">{clientes.filter(c => c.status === 'ATIVO').length} ativos · MRR: {formatCurrency(totalMRR)}/mês</p>
         </div>
-        <button onClick={() => { setEditingId(null); setForm({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '' }); setShowForm(!showForm); }} className="btn-primary flex items-center gap-2 text-sm shrink-0"><Plus size={16} />Novo Cliente</button>
+        <button onClick={() => { setEditingId(null); setForm({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '', lead_origem_id: null }); setShowForm(!showForm); }} className="btn-primary flex items-center gap-2 text-sm shrink-0"><Plus size={16} />Novo Cliente</button>
       </header>
 
       {/* Error */}
@@ -185,7 +192,8 @@ export default function ClientesPage() {
                         email: lead.email_extraido || prev.email,
                         endereco: lead.morada || prev.endereco,
                         segmento: lead.nicho || prev.segmento,
-                        notas: lead.observacoes_ia || lead.dor_identificada || prev.notas
+                        notas: lead.observacoes_ia || lead.dor_identificada || prev.notas,
+                        lead_origem_id: lead.id
                       }));
                       showToast('Dados do lead importados', 'success');
                     }
@@ -244,6 +252,26 @@ export default function ClientesPage() {
                     </div>
                     {cs.length > 0 && <div><p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2">Serviços</p>{cs.map(s => <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 mb-2"><div className="flex items-center gap-3"><FileText size={14} className="text-indigo-400" /><span className="text-sm text-gray-200">{s.nome_servico}</span><span className="text-[10px] bg-white/5 px-2 py-0.5 rounded text-gray-400 uppercase">{s.tipo}</span></div><span className="text-sm font-bold text-white">{formatCurrency(s.valor)}</span></div>)}</div>}
                     {c.notas && <div className="bg-white/[0.02] p-3 rounded-xl border border-white/5"><p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Notas</p><p className="text-sm text-gray-300">{c.notas}</p></div>}
+                    
+                    {/* Histórico do Lead / Cliente */}
+                    {historico.filter(h => (h.entidade_id === c.id || h.entidade_id === c.lead_origem_id) || (h.cliente_id === c.id || h.lead_id === c.lead_origem_id)).length > 0 && (
+                      <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5">
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5"><History size={12} /> Histórico & Tarefas (Pipeline)</p>
+                        <div className="space-y-3">
+                          {historico.filter(h => (h.entidade_id === c.id || h.entidade_id === c.lead_origem_id) || (h.cliente_id === c.id || h.lead_id === c.lead_origem_id)).slice(0, 5).map((h, i) => (
+                            <div key={i} className="flex gap-3 relative">
+                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-xs text-gray-300 font-medium">{h.acao || h.descricao}</p>
+                                {h.detalhes && <p className="text-[10px] text-gray-500 mt-0.5">{h.detalhes}</p>}
+                                <p className="text-[9px] text-gray-600 mt-0.5">{new Date(h.created_at).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' })} {h.data_agendada && <span className="text-indigo-400">| Agendado para {new Date(h.data_agendada).toLocaleDateString('pt-PT')}</span>}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2 sm:gap-3">
                       {c.whatsapp && <button onClick={e => { e.stopPropagation(); let num = c.whatsapp.replace(/\D/g, ''); if (num.length === 9) num = '351' + num; window.open(`https://wa.me/${num}`, '_blank'); }} className="btn-success flex items-center gap-2 text-sm"><MessageCircle size={14} />WhatsApp</button>}
                       <button onClick={e => { e.stopPropagation(); handleEdit(c); }} className="btn-secondary flex items-center gap-2 text-sm"><Edit2 size={14} />Editar</button>
