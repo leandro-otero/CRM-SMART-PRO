@@ -111,10 +111,11 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
         clientId = existingClient.id;
         await supabase.from('clientes').update({ lead_origem_id: lead.id }).eq('id', clientId);
       } else {
+        const leadAny = lead as any;
         const { data: newClient } = await supabase.from('clientes').insert({
           nome_empresa: lead.nome_empresa,
-          responsavel: lead.responsavel || '',
-          telefone: lead.telefone_google || '',
+          responsavel: leadAny.responsavel || '',
+          telefone: leadAny.telefone_google || '',
           whatsapp: lead.whatsapp_extraido || '',
           email: lead.email_extraido || '',
           endereco: lead.morada || '',

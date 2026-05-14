@@ -3,14 +3,14 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { formatCurrency } from '@/lib/servicePortfolio';
-import { Users, Plus, X, Search, Phone, Mail, MapPin, MessageCircle, ChevronDown, ChevronUp, Trash2, FileText, AlertTriangle, RefreshCw, Edit2 } from 'lucide-react';
+import { Users, Plus, X, Search, Phone, Mail, MapPin, MessageCircle, ChevronDown, ChevronUp, Trash2, FileText, AlertTriangle, RefreshCw, Edit2, History } from 'lucide-react';
 import { useToast } from '@/components/ToastProvider';
 
 interface Cliente {
   id: string; nome_empresa: string; responsavel: string; cargo: string;
   telefone: string; whatsapp: string; email: string; endereco: string;
   segmento: string; cnpj_nif: string; data_inicio: string; status: string;
-  notas: string; created_at: string;
+  notas: string; lead_origem_id?: string | null; created_at: string;
 }
 
 interface Servico {
