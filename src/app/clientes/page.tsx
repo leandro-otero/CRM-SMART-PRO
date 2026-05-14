@@ -29,20 +29,23 @@ export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; nome: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [leads, setLeads] = useState<any[]>([]);
   const [form, setForm] = useState({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '' });
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [cRes, sRes] = await Promise.all([
+      const [cRes, sRes, lRes] = await Promise.all([
         supabase.from('clientes').select('*').order('created_at', { ascending: false }),
         supabase.from('servicos_contratados').select('*'),
+        supabase.from('leads_prospeccao').select('id, nome_empresa, whatsapp_extraido, email_extraido, morada, nicho, observacoes_ia, dor_identificada').order('created_at', { ascending: false })
       ]);
       if (cRes.error) throw cRes.error;
       if (sRes.error) throw sRes.error;
       setClientes(cRes.data || []);
       setServicos(sRes.data || []);
+      setLeads(lRes.data || []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar clientes';
       setError(message);
@@ -78,6 +81,7 @@ export default function ClientesPage() {
     if (editingId) {
       const { error: updateErr } = await supabase.from('clientes').update(form).eq('id', editingId);
       if (updateErr) {
+        console.error("Update error:", updateErr);
         setError(`Erro ao atualizar: ${updateErr.message}`);
         return;
       }
@@ -86,6 +90,7 @@ export default function ClientesPage() {
     } else {
       const { error: insertErr } = await supabase.from('clientes').insert(form);
       if (insertErr) {
+        console.error("Insert error:", insertErr);
         setError(`Erro ao registar: ${insertErr.message}`);
         showToast('Erro ao registar cliente', 'error');
         return;
@@ -162,6 +167,39 @@ export default function ClientesPage() {
         <section className="glass-card p-6 animate-slide-up">
           <div className="flex justify-between items-center mb-5"><h2 className="text-lg font-bold text-white">{editingId ? 'Editar Cliente' : 'Registar Cliente'}</h2><button onClick={() => setShowForm(false)} className="p-1 rounded-lg hover:bg-white/10 text-gray-400"><X size={18} /></button></div>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            {!editingId && leads.length > 0 && (
+              <div className="md:col-span-2 mb-2 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                <label className="text-xs text-indigo-300 font-bold uppercase tracking-wider mb-2 block">Puxar dados do Pipeline (Opcional)</label>
+                <select 
+                  className="input-glass w-full text-sm"
+                  onChange={(e) => {
+                    const leadId = e.target.value;
+                    if (!leadId) return;
+                    const lead = leads.find(l => l.id === leadId);
+                    if (lead) {
+                      setForm(prev => ({
+                        ...prev,
+                        nome_empresa: lead.nome_empresa || prev.nome_empresa,
+                        whatsapp: lead.whatsapp_extraido || prev.whatsapp,
+                        email: lead.email_extraido || prev.email,
+                        endereco: lead.morada || prev.endereco,
+                        segmento: lead.nicho || prev.segmento,
+                        notas: lead.observacoes_ia || lead.dor_identificada || prev.notas
+                      }));
+                      showToast('Dados do lead importados', 'success');
+                    }
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" className="bg-dark-surface text-gray-400">-- Selecione um Lead --</option>
+                  {leads.map(l => (
+                    <option key={l.id} value={l.id} className="bg-dark-surface text-white">{l.nome_empresa}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div><label className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1 block">Empresa *</label><input required value={form.nome_empresa} onChange={e => setForm({...form, nome_empresa: e.target.value})} className="input-glass w-full" placeholder="Nome da empresa" /></div>
             <div><label className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1 block">Responsável</label><input value={form.responsavel} onChange={e => setForm({...form, responsavel: e.target.value})} className="input-glass w-full" placeholder="Nome" /></div>
             <div><label className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-1 block">Cargo</label><input value={form.cargo} onChange={e => setForm({...form, cargo: e.target.value})} className="input-glass w-full" placeholder="Gerente, Sócio..." /></div>

@@ -18,11 +18,93 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
   const [timeline, setTimeline] = useState<any[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
 
+  // Calculator states
+  const [selectedServices, setSelectedServices] = useState<string[]>(initialLead.servicos_recomendados || []);
+  const [discountRate, setDiscountRate] = useState<number>(0);
+  const [finalValue, setFinalValue] = useState<number>(0);
+  const [isManualFinalValue, setIsManualFinalValue] = useState(false);
+
   useEffect(() => {
     supabase.from('catalogo_servicos').select('*').then(({ data }) => {
       if (data) setCatalogoServicos(data);
     });
   }, []);
+
+  const totalSetup = selectedServices.reduce((acc, nome) => {
+    const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+    return acc + (s?.valor_setup || 0);
+  }, 0);
+
+  const totalMensal = selectedServices.reduce((acc, nome) => {
+    const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+    return acc + (s?.valor_mensal || 0);
+  }, 0);
+
+  useEffect(() => {
+    if (!isManualFinalValue) {
+      setFinalValue(totalSetup * (1 - discountRate / 100));
+    }
+  }, [selectedServices, discountRate, totalSetup, isManualFinalValue]);
+
+  const handleFinalValueChange = (val: number) => {
+    setFinalValue(val);
+    setIsManualFinalValue(true);
+    if (totalSetup > 0) {
+      const newRate = ((totalSetup - val) / totalSetup) * 100;
+      setDiscountRate(newRate > 0 ? parseFloat(newRate.toFixed(2)) : 0);
+    }
+  };
+
+  const handleDiscountChange = (rate: number) => {
+    setDiscountRate(rate);
+    setIsManualFinalValue(false);
+  };
+  
+  const toggleService = (nome: string) => {
+    setSelectedServices(prev => 
+      prev.includes(nome) ? prev.filter(n => n !== nome) : [...prev, nome]
+    );
+  };
+
+  const handleEditPresence = async (type: string, currentUrl: string | undefined) => {
+    const url = window.prompt(`Insira o link para ${type}:`, currentUrl || '');
+    if (url !== null) {
+      const val = url.trim();
+      let updatePayload: any = {};
+      switch(type) {
+        case 'Site':
+          updatePayload.website = val;
+          updatePayload.tem_site = !!val;
+          break;
+        case 'Maps':
+          updatePayload.google_maps_completo = !!val;
+          break;
+        case 'Instagram':
+          updatePayload.instagram = val;
+          updatePayload.tem_instagram = !!val;
+          updatePayload.instagram_ativo = !!val;
+          break;
+        case 'WhatsApp':
+          updatePayload.whatsapp_extraido = val;
+          updatePayload.tem_whatsapp_business = !!val;
+          break;
+        case 'E-commerce':
+          updatePayload.website = val;
+          updatePayload.tem_ecommerce = !!val;
+          break;
+        case 'Facebook':
+          updatePayload.facebook = val;
+          break;
+      }
+      
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await supabase.from('leads_prospeccao').update(updatePayload).eq('id', lead.id);
+        if (!error) {
+          setLead(prev => ({ ...prev, ...updatePayload }));
+        }
+      }
+    }
+  };
 
   // Fetch timeline for this lead
   const fetchTimeline = async () => {
@@ -211,36 +293,42 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
                 has={lead.tem_site} 
                 url={lead.website || (lead.tem_site ? `https://www.google.com/search?q=${encodeURIComponent(lead.nome_empresa)}` : undefined)}
                 icon={Globe}
+                onEdit={() => handleEditPresence('Site', lead.website)}
               />
               <PresenceItem 
                 label="Maps" 
                 has={lead.google_maps_completo} 
                 url={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.nome_empresa + ' ' + (lead.morada || ''))}`}
                 icon={MapPin}
+                onEdit={() => handleEditPresence('Maps', '')}
               />
               <PresenceItem 
                 label="Instagram" 
                 has={lead.instagram_ativo} 
                 url={lead.instagram || (lead.instagram_ativo ? `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(lead.nome_empresa)}` : undefined)}
                 icon={Camera}
+                onEdit={() => handleEditPresence('Instagram', lead.instagram)}
               />
               <PresenceItem 
                 label="WhatsApp" 
                 has={lead.tem_whatsapp_business} 
                 url={lead.whatsapp_extraido ? `https://wa.me/${lead.whatsapp_extraido.replace(/\D/g, '').length === 9 ? '351' + lead.whatsapp_extraido.replace(/\D/g, '') : lead.whatsapp_extraido.replace(/\D/g, '')}` : undefined}
                 icon={MessageCircle}
+                onEdit={() => handleEditPresence('WhatsApp', lead.whatsapp_extraido)}
               />
               <PresenceItem 
                 label="E-commerce" 
                 has={lead.tem_ecommerce} 
                 url={lead.website || (lead.tem_ecommerce ? `https://www.google.com/search?q=${encodeURIComponent(lead.nome_empresa + ' loja online')}` : undefined)}
                 icon={ShoppingCart}
+                onEdit={() => handleEditPresence('E-commerce', lead.website)}
               />
               <PresenceItem 
                 label="Facebook" 
                 has={!!lead.facebook} 
                 url={lead.facebook || undefined}
                 icon={Globe}
+                onEdit={() => handleEditPresence('Facebook', lead.facebook)}
               />
             </div>
           </div>
@@ -289,18 +377,64 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
 
           {/* Services Recommended */}
           {lead.servicos_recomendados && lead.servicos_recomendados.length > 0 && (
-            <div>
+            <div className="space-y-4">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3">Pacote Recomendado</h3>
               <div className="space-y-2">
                 {lead.servicos_recomendados.map((nome, i) => {
                   const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+                  const isSelected = selectedServices.includes(nome);
                   return (
-                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                      <span className="text-sm text-gray-200 font-medium">{nome}</span>
-                      {s && <span className="text-sm text-emerald-400 font-bold">{formatCurrency(s.valor_setup)} + {formatCurrency(s.valor_mensal)}/mês</span>}
+                    <div key={i} 
+                      onClick={() => toggleService(nome)}
+                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-white/[0.03] border-white/5 opacity-60 hover:opacity-100'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isSelected ? 'border-indigo-400 bg-indigo-500' : 'border-gray-500'}`}>
+                           {isSelected && <CheckCircle size={10} className="text-white" />}
+                        </div>
+                        <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-400'}`}>{nome}</span>
+                      </div>
+                      {s && <span className={`text-sm font-bold ${isSelected ? 'text-emerald-400' : 'text-gray-500'}`}>{formatCurrency(s.valor_setup)} + {formatCurrency(s.valor_mensal)}/mês</span>}
                     </div>
                   );
                 })}
+              </div>
+              
+              {/* Calculator */}
+              <div className="p-4 rounded-xl bg-black/20 border border-white/5 space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-400">Total Setup:</span>
+                  <span className="text-white font-medium">{formatCurrency(totalSetup)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-400">Mensalidade:</span>
+                  <span className="text-emerald-400 font-bold">{formatCurrency(totalMensal)}</span>
+                </div>
+                <div className="pt-3 border-t border-white/5 flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Desconto (%)</label>
+                      <input 
+                        type="number" 
+                        value={discountRate} 
+                        onChange={(e) => handleDiscountChange(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-bold block mb-1">Valor Final Setup (€)</label>
+                      <input 
+                        type="number" 
+                        value={finalValue > 0 ? parseFloat(finalValue.toFixed(2)) : 0} 
+                        onChange={(e) => handleFinalValueChange(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-3 py-2 text-sm text-white font-bold focus:outline-none focus:border-indigo-500"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -353,7 +487,7 @@ function InfoBox({ icon, label, value }: { icon: React.ReactNode; label: string;
   );
 }
 
-function PresenceItem({ label, has, url, icon: Icon }: { label: string; has?: boolean; url?: string; icon?: React.ComponentType<{ size?: number; className?: string }> }) {
+function PresenceItem({ label, has, url, icon: Icon, onEdit }: { label: string; has?: boolean; url?: string; icon?: React.ComponentType<{ size?: number; className?: string }>; onEdit?: () => void }) {
   if (has === undefined) return <div className="text-center p-2 rounded-lg bg-white/[0.02] border border-white/5 flex flex-col items-center justify-center"><p className="text-sm text-gray-600">—</p><p className="text-[10px] text-gray-600">{label}</p></div>;
 
   const content = (
@@ -385,8 +519,12 @@ function PresenceItem({ label, has, url, icon: Icon }: { label: string; has?: bo
   }
 
   return (
-    <div className={`${baseClasses} ${has ? 'bg-emerald-500/10 border-emerald-500/15' : 'bg-red-500/5 border-red-500/10 opacity-70'}`}>
+    <button 
+      onClick={onEdit} 
+      className={`${baseClasses} w-full ${has ? 'bg-emerald-500/10 border-emerald-500/15 cursor-pointer hover:bg-emerald-500/20' : 'bg-red-500/5 border-red-500/10 opacity-70 hover:opacity-100 hover:border-red-400/30 cursor-pointer'}`}
+      title={!has ? `Adicionar link para ${label}` : `Editar link para ${label}`}
+    >
       {content}
-    </div>
+    </button>
   );
 }
