@@ -7,6 +7,7 @@ import { useDraggable } from '@dnd-kit/core';
 export interface LeadData {
   id: string;
   nome_empresa: string;
+  responsavel?: string;
   nicho: string;
   dor_identificada: string;
   servico_primario: string;

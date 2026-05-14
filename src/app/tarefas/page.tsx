@@ -2,7 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { CheckSquare, Plus, X, Clock, AlertTriangle, CheckCircle2, Circle, RefreshCw, Flame, Users } from 'lucide-react';
+import { CheckSquare, Plus, X, Clock, AlertTriangle, CheckCircle2, Circle, RefreshCw, Flame, Users, Calendar as CalendarIcon, List, CalendarPlus } from 'lucide-react';
+import { Calendar, momentLocalizer } from 'react-big-calendar';
+import moment from 'moment';
+import 'moment/locale/pt';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+moment.locale('pt');
+const localizer = momentLocalizer(moment);
 
 interface Tarefa {
   id: string;
@@ -33,6 +40,7 @@ export default function TarefasPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [filtro, setFiltro] = useState<'todas' | 'pendentes' | 'concluidas' | 'alta' | 'atrasadas'>('pendentes');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [form, setForm] = useState({ descricao: '', tipo: 'follow-up', data_agendada: '', prioridade: 'MEDIA', lead_id: '', cliente_id: '' });
 
   const fetchData = async () => {
@@ -126,8 +134,31 @@ export default function TarefasPage() {
   const isVencida = (data: string | null) => data && new Date(data) < new Date() && new Date(data).toDateString() !== new Date().toDateString();
   const isHoje = (data: string | null) => data && new Date(data).toDateString() === new Date().toDateString();
 
+  const generateGoogleCalendarLink = (tarefa: Tarefa) => {
+    if (!tarefa.data_agendada) return '';
+    const start = new Date(tarefa.data_agendada);
+    const end = new Date(start.getTime() + 60 * 60 * 1000); // +1 hour
+    const formatGoogleDate = (date: Date) => date.toISOString().replace(/-|:|\.\d\d\d/g, '');
+    
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: `[CRM] ${tarefa.descricao}`,
+      dates: `${formatGoogleDate(start)}/${formatGoogleDate(end)}`,
+      details: `Tipo: ${tarefa.tipo}\nPrioridade: ${tarefa.prioridade}\n${tarefa.lead_nome ? `Lead: ${tarefa.lead_nome}` : ''}${tarefa.cliente_nome ? `Cliente: ${tarefa.cliente_nome}` : ''}`,
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  };
+
+  const calendarEvents = tarefas.filter(t => t.data_agendada).map(t => ({
+    id: t.id,
+    title: t.descricao,
+    start: new Date(t.data_agendada!),
+    end: new Date(new Date(t.data_agendada!).getTime() + 60 * 60 * 1000), // 1 hour duration
+    resource: t,
+  }));
+
   return (
-    <div className="p-4 md:p-8 max-w-[1000px] mx-auto space-y-6 md:space-y-8">
+    <div className="p-4 md:p-8 max-w-[1200px] mx-auto space-y-6 md:space-y-8">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
@@ -226,28 +257,80 @@ export default function TarefasPage() {
         </section>
       )}
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2 flex-wrap">
-        {[
-          { key: 'pendentes', label: 'Pendentes' },
-          { key: 'alta', label: '🔴 Urgentes' },
-          { key: 'atrasadas', label: '⚠️ Vencidas' },
-          { key: 'todas', label: 'Todas' },
-          { key: 'concluidas', label: '✅ Concluídas' },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFiltro(f.key as typeof filtro)}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${filtro === f.key ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-white/[0.03] text-gray-500 border border-white/5 hover:bg-white/[0.06]'}`}
-          >
-            {f.label}
+      {/* Filter Tabs & View Toggle */}
+      <div className="flex justify-between items-center flex-wrap gap-4">
+        <div className="flex gap-2 flex-wrap">
+          {[
+            { key: 'pendentes', label: 'Pendentes' },
+            { key: 'alta', label: '🔴 Urgentes' },
+            { key: 'atrasadas', label: '⚠️ Vencidas' },
+            { key: 'todas', label: 'Todas' },
+            { key: 'concluidas', label: '✅ Concluídas' },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFiltro(f.key as typeof filtro)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${filtro === f.key ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-white/[0.03] text-gray-500 border border-white/5 hover:bg-white/[0.06]'}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/5">
+          <button onClick={() => setViewMode('list')} className={`px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+            <List size={16} /> Lista
           </button>
-        ))}
+          <button onClick={() => setViewMode('calendar')} className={`px-3 py-1.5 rounded-lg flex items-center gap-2 text-sm transition-all ${viewMode === 'calendar' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+            <CalendarIcon size={16} /> Calendário
+          </button>
+        </div>
       </div>
 
-      {/* Task List */}
+      {/* Main Content Area */}
       {loading ? (
         <div className="text-center py-16 text-indigo-400 animate-pulse font-bold">A carregar tarefas...</div>
+      ) : viewMode === 'calendar' ? (
+        <div className="glass-card p-6 h-[600px] overflow-hidden rb-calendar-container">
+          <style dangerouslySetInnerHTML={{__html: `
+            .rbc-calendar { font-family: inherit; color: white; }
+            .rbc-btn-group button { color: #9ca3af; border-color: rgba(255,255,255,0.1); }
+            .rbc-btn-group button.rbc-active { background: rgba(99, 102, 241, 0.2); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); box-shadow: none; }
+            .rbc-toolbar button:hover { background: rgba(255,255,255,0.05); }
+            .rbc-month-view, .rbc-time-view, .rbc-header, .rbc-day-bg, .rbc-month-row, .rbc-time-header-content { border-color: rgba(255,255,255,0.05) !important; }
+            .rbc-off-range-bg { background: rgba(255,255,255,0.02); }
+            .rbc-today { background: rgba(99, 102, 241, 0.05); }
+            .rbc-event { background-color: rgba(99, 102, 241, 0.8); border: none; border-radius: 6px; padding: 2px 6px; }
+            .rbc-event.concluida { background-color: rgba(16, 185, 129, 0.5); text-decoration: line-through; }
+            .rbc-event.alta { background-color: rgba(239, 68, 68, 0.8); }
+          `}} />
+          <Calendar
+            localizer={localizer}
+            events={calendarEvents}
+            startAccessor="start"
+            endAccessor="end"
+            messages={{
+              next: "Próximo",
+              previous: "Anterior",
+              today: "Hoje",
+              month: "Mês",
+              week: "Semana",
+              day: "Dia"
+            }}
+            eventPropGetter={(event) => {
+              const t = event.resource as Tarefa;
+              let className = '';
+              if (t.concluida) className = 'concluida';
+              else if (t.prioridade === 'ALTA') className = 'alta';
+              return { className };
+            }}
+            onSelectEvent={(event) => {
+              const url = generateGoogleCalendarLink(event.resource as Tarefa);
+              if (url && window.confirm(`Deseja adicionar "${event.title}" ao seu Google Calendar?`)) {
+                window.open(url, '_blank');
+              }
+            }}
+          />
+        </div>
       ) : tarefasFiltradas.length === 0 ? (
         <div className="text-center py-16">
           <CheckSquare size={48} className="text-gray-700 mx-auto mb-3" />
@@ -278,6 +361,11 @@ export default function TarefasPage() {
                     )}
                   </div>
                 </div>
+                {t.data_agendada && !t.concluida && (
+                  <a href={generateGoogleCalendarLink(t)} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-indigo-400 transition-colors shrink-0 p-1 mr-2 flex items-center gap-1 bg-white/5 rounded-lg px-2" title="Adicionar ao Google Calendar">
+                    <CalendarPlus size={14} /> <span className="text-[10px] font-bold">Add</span>
+                  </a>
+                )}
                 <button onClick={() => deleteTarefa(t.id)} className="text-gray-700 hover:text-red-400 transition-colors shrink-0 p-1">
                   <X size={16} />
                 </button>

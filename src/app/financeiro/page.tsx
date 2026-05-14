@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/servicePortfolio';
 import { DollarSign, TrendingUp, PieChart, Calendar, AlertTriangle, RefreshCw, Plus, X, Trash2, Zap } from 'lucide-react';
 
 interface Cliente { id: string; nome_empresa: string; status: string; }
-interface Servico { id: string; cliente_id: string; nome_servico: string; tipo: string; valor: number; status: string; data_vencimento: string; }
+interface Servico { id: string; cliente_id: string; nome_servico: string; tipo: string; valor: number; status: string; data_vencimento: string; status_pagamento: string; }
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; recorrente: boolean; }
 interface Lead { id: string; status_funil: string; ticket_estimado: number; }
 
@@ -97,6 +97,17 @@ export default function FinanceiroPage() {
       return;
     }
     fetchData();
+  };
+
+  const togglePaymentStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'pago' ? 'pendente' : 'pago';
+    const { error: updErr } = await supabase.from('servicos_contratados').update({ status_pagamento: newStatus }).eq('id', id);
+    if (updErr) {
+      setError(`Erro ao atualizar pagamento: ${updErr.message}`);
+      return;
+    }
+    // Optimistic UI update
+    setServicos(prev => prev.map(s => s.id === id ? { ...s, status_pagamento: newStatus } : s));
   };
 
   const metrics = useMemo(() => {
@@ -236,28 +247,37 @@ export default function FinanceiroPage() {
           )}
         </section>
 
-        {/* Upcoming Payments */}
-        <section className="glass-card p-6">
+        {/* Upcoming Payments / Controlo de Pagamentos */}
+        <section className="glass-card p-6 lg:col-span-1">
           <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 mb-4">
             <Calendar size={16} className="text-amber-400" />
-            Próximos Vencimentos
+            Gestão de Cobranças
           </h3>
-          {metrics.vencimentos.length === 0 ? (
-            <p className="text-gray-600 text-sm py-4 text-center">Sem vencimentos registados</p>
+          {servicos.filter(s => s.status === 'ativo').length === 0 ? (
+            <p className="text-gray-600 text-sm py-4 text-center">Sem serviços ativos registados</p>
           ) : (
-            <div className="space-y-3">
-              {metrics.vencimentos.map((v, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5">
-                  <div>
-                    <p className="text-sm font-medium text-gray-200">{v.clienteNome}</p>
-                    <p className="text-[11px] text-gray-500">{v.nome_servico} · {v.tipo}</p>
+            <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+              {servicos.filter(s => s.status === 'ativo').sort((a, b) => (a.status_pagamento === 'pago' ? 1 : -1)).map((v, i) => {
+                const cliente = clientes.find(c => c.id === v.cliente_id);
+                const isPaid = v.status_pagamento === 'pago';
+                return (
+                  <div key={i} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isPaid ? 'bg-emerald-500/5 border-emerald-500/20 opacity-70' : 'bg-amber-500/5 border-amber-500/20'}`}>
+                    <div>
+                      <p className={`text-sm font-semibold ${isPaid ? 'text-gray-400 line-through' : 'text-gray-200'}`}>{cliente?.nome_empresa || 'Desconhecido'}</p>
+                      <p className="text-[11px] text-gray-500">{v.nome_servico} · {v.tipo}</p>
+                    </div>
+                    <div className="text-right flex flex-col items-end gap-1">
+                      <p className={`text-sm font-bold ${isPaid ? 'text-emerald-500/50' : 'text-amber-400'}`}>{formatCurrency(v.valor)}</p>
+                      <button 
+                        onClick={() => togglePaymentStatus(v.id, v.status_pagamento)}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${isPaid ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-amber-500/20 text-amber-400 hover:bg-amber-500/30'}`}
+                      >
+                        {isPaid ? 'PAGO ✓' : 'PENDENTE'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-white">{formatCurrency(v.valor)}</p>
-                    <p className="text-[10px] text-gray-500">{new Date(v.data_vencimento).toLocaleDateString('pt-PT')}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

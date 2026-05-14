@@ -1,12 +1,14 @@
 'use client';
 
-import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart, History, Plus, Calendar } from 'lucide-react';
+import { X, MessageCircle, MapPin, Star, Globe, Camera, TrendingUp, DollarSign, Copy, ExternalLink, Mail, Zap, CheckCircle, XCircle, ShoppingCart, History, Plus, Calendar, FileText } from 'lucide-react';
 import { LeadData } from './LeadCard';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/servicePortfolio';
 import { useToast } from '@/components/ToastProvider';
 import { getClassificacaoLabel } from '@/lib/leadScoring';
 import { supabase } from '@/lib/supabaseClient';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface LeadDetailModalProps { lead: LeadData; onClose: () => void; }
 
@@ -169,6 +171,85 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     } finally {
       setIsConfirming(false);
     }
+  };
+
+  const exportarPropostaPDF = () => {
+    if (selectedServices.length === 0 && (!lead.servicos_recomendados || lead.servicos_recomendados.length === 0)) {
+      showToast('Selecione pelo menos um serviço para gerar o orçamento.', 'warning');
+      return;
+    }
+
+    const doc = new jsPDF();
+    
+    // Cabeçalho
+    doc.setFontSize(22);
+    doc.setTextColor(79, 70, 229); // Indigo 600
+    doc.text('Proposta Comercial', 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-PT')}`, 14, 28);
+    doc.text(`Cliente: ${lead.nome_empresa}`, 14, 34);
+    if (lead.responsavel) doc.text(`A/C: ${lead.responsavel}`, 14, 40);
+
+    // Corpo / Resumo
+    doc.setFontSize(14);
+    doc.setTextColor(40, 40, 40);
+    doc.text('Serviços Recomendados:', 14, 55);
+
+    const tableData = selectedServices.map(nome => {
+      const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
+      return [
+        nome,
+        s ? formatCurrency(s.valor_setup) : '€0,00',
+        s && s.valor_mensal > 0 ? formatCurrency(s.valor_mensal) : '-',
+        s && s.valor_anual > 0 ? formatCurrency(s.valor_anual) : '-'
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 60,
+      head: [['Serviço', 'Setup (Único)', 'Mensalidade', 'Anual (Licença)']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+      alternateRowStyles: { fillColor: [249, 250, 251] }
+    });
+
+    // Totais
+    const finalY = (doc as any).lastAutoTable.finalY || 60;
+    
+    doc.setFontSize(11);
+    doc.setTextColor(80, 80, 80);
+    
+    let yPos = finalY + 15;
+    if (discountRate > 0) {
+      doc.text(`Desconto Aplicado (Setup): ${discountRate}%`, 14, yPos);
+      yPos += 7;
+    }
+    
+    doc.setFontSize(12);
+    doc.setTextColor(40, 40, 40);
+    doc.text(`Total Setup (a pagar agora): ${formatCurrency(finalValue)}`, 14, yPos);
+    yPos += 8;
+    if (totalMensal > 0) doc.text(`Total Mensal: ${formatCurrency(totalMensal)}`, 14, yPos);
+    yPos += 8;
+    if (totalAnual > 0) doc.text(`Total Anual (Licenças): ${formatCurrency(totalAnual)}`, 14, yPos);
+    
+    if (deliveryDate) {
+      yPos += 12;
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Data Prevista de Entrega: ${new Date(deliveryDate).toLocaleDateString('pt-PT')}`, 14, yPos);
+    }
+
+    // Rodapé
+    doc.setFontSize(9);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Documento gerado automaticamente pelo CRM. Valores sujeitos a alteração.', 14, 280);
+
+    doc.save(`Proposta_${lead.nome_empresa.replace(/\s+/g, '_')}.pdf`);
+    showToast('PDF gerado com sucesso!', 'success');
   };
 
   const handleEditPresence = async (type: string, currentUrl: string | undefined) => {
@@ -617,6 +698,9 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
           <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
           <button onClick={() => { let num = lead.whatsapp_extraido?.replace(/\D/g, ''); if (num && num.length === 9) num = '351' + num; if (num) window.open(`https://wa.me/${num}`, '_blank'); }} className="btn-secondary flex items-center justify-center gap-2 text-sm">
             <MessageCircle size={16} />Iniciar Conversa
+          </button>
+          <button onClick={exportarPropostaPDF} className="btn-secondary flex items-center justify-center gap-2 text-sm text-blue-300 hover:text-blue-200 hover:border-blue-500/50">
+            <FileText size={16} />Gerar Orçamento (PDF)
           </button>
           {lead.status_funil !== 'Fechado' && (
             <button 

@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/components/ToastProvider';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const PipelineChart = lazy(() => import('@/components/PipelineChart'));
 
@@ -58,6 +60,7 @@ export default function Dashboard() {
   const [clientes, setClientes] = useState<ClienteRow[]>([]);
   const [servicos, setServicos] = useState<ServicoRow[]>([]);
   const [atividades, setAtividades] = useState<AtividadeRow[]>([]);
+  const [tarefas, setTarefas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -91,22 +94,25 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [leadsRes, clientesRes, servicosRes, atividadesRes] = await Promise.all([
+      const [leadsRes, clientesRes, servicosRes, atividadesRes, tarefasRes] = await Promise.all([
         supabase.from('leads_prospeccao').select('id, nome_empresa, nicho, score_aceitacao, classificacao, status_funil, data_entrada_etapa, potencial_receita_mensal').order('score_aceitacao', { ascending: false }),
         supabase.from('clientes').select('id, nome_empresa, status'),
         supabase.from('servicos_contratados').select('valor, tipo, status'),
         supabase.from('atividade_log').select('*').order('created_at', { ascending: false }).limit(10),
+        supabase.from('pipeline_tarefas').select('*').eq('concluida', false).order('data_agendada', { ascending: true })
       ]);
 
       if (leadsRes.error) throw leadsRes.error;
       if (clientesRes.error) throw clientesRes.error;
       if (servicosRes.error) throw servicosRes.error;
       if (atividadesRes.error) throw atividadesRes.error;
+      if (tarefasRes.error) throw tarefasRes.error;
 
       setLeads(leadsRes.data || []);
       setClientes(clientesRes.data || []);
       setServicos(servicosRes.data || []);
       setAtividades(atividadesRes.data || []);
+      setTarefas(tarefasRes.data || []);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar dados';
       setError(message);
@@ -145,6 +151,7 @@ export default function Dashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => debouncedFetch('clientes'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos_contratados' }, () => debouncedFetch('servicos_contratados'))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'atividade_log' }, () => debouncedFetch('atividade_log'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pipeline_tarefas' }, () => fetchAll())
       .subscribe();
 
     return () => {
@@ -324,6 +331,40 @@ export default function Dashboard() {
               ))}
             </div>
           )}
+        </section>
+
+        {/* Pending Tasks */}
+        <section className="glass-card p-6 lg:col-span-1">
+          <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2 mb-4">
+            <Clock size={16} className="text-blue-400" />
+            Tarefas de Hoje / Atrasadas
+          </h3>
+          {tarefas.filter(t => new Date(t.data_agendada).getTime() <= new Date().getTime() + 86400000).length === 0 ? (
+            <p className="text-gray-600 text-sm py-4 text-center">Tudo em dia! Nenhuma tarefa urgente.</p>
+          ) : (
+            <div className="space-y-3">
+              {tarefas.filter(t => new Date(t.data_agendada).getTime() <= new Date().getTime() + 86400000).slice(0, 5).map((tarefa) => {
+                const isOverdue = new Date(tarefa.data_agendada).getTime() < new Date().getTime() - 86400000;
+                return (
+                  <div key={tarefa.id} className={`flex items-center justify-between p-3 rounded-xl border ${isOverdue ? 'bg-red-500/5 border-red-500/20' : 'bg-blue-500/5 border-blue-500/20'}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-1 w-2 h-2 rounded-full ${isOverdue ? 'bg-red-500' : 'bg-blue-400'}`} />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-200 line-clamp-1">{tarefa.descricao}</p>
+                        <p className={`text-[10px] font-medium mt-0.5 ${isOverdue ? 'text-red-400' : 'text-blue-300'}`}>
+                          {isOverdue ? 'Atrasada: ' : 'Para hoje: '} 
+                          {tarefa.data_agendada ? format(new Date(tarefa.data_agendada), "dd 'de' MMM", { locale: ptBR }) : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <Link href="/tarefas" className="text-xs text-indigo-400 hover:text-indigo-300 mt-4 inline-block font-semibold">
+            Ver calendário completo →
+          </Link>
         </section>
 
         {/* Alerts */}
