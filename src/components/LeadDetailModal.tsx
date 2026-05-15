@@ -197,7 +197,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     // Logo
     const logoBase64 = await getLogoBase64('dark');
     if (logoBase64) {
-      doc.addImage(logoBase64, 'PNG', 14, 10, 48, 12);
+      doc.addImage(logoBase64, 'PNG', 148, 10, 48, 12); // Alinhado à direita (210 - 14 - 48)
     }
     
     // Cabeçalho
