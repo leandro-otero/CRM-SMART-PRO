@@ -20,6 +20,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
   const [activeTab, setActiveTab] = useState<'detalhes' | 'timeline'>('detalhes');
   const [timeline, setTimeline] = useState<any[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [editingPresence, setEditingPresence] = useState<{ type: string; url: string } | null>(null);
 
   const { showToast } = useToast();
   // Calculator states
@@ -173,7 +174,19 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     }
   };
 
-  const exportarPropostaPDF = () => {
+  const getLogoBase64 = async (type: 'dark' | 'light') => {
+    try {
+      const res = await fetch(`/logo-${type}.png`);
+      const blob = await res.blob();
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch { return null; }
+  };
+
+  const exportarPropostaPDF = async () => {
     if (selectedServices.length === 0 && (!lead.servicos_recomendados || lead.servicos_recomendados.length === 0)) {
       showToast('Selecione pelo menos um serviço para gerar o orçamento.', 'warning');
       return;
@@ -181,21 +194,27 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
 
     const doc = new jsPDF();
     
+    // Logo
+    const logoBase64 = await getLogoBase64('dark');
+    if (logoBase64) {
+      doc.addImage(logoBase64, 'PNG', 14, 10, 48, 12);
+    }
+    
     // Cabeçalho
     doc.setFontSize(22);
     doc.setTextColor(79, 70, 229); // Indigo 600
-    doc.text('Proposta Comercial', 14, 20);
+    doc.text('Proposta Comercial', 14, 32);
     
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
-    doc.text(`Data: ${new Date().toLocaleDateString('pt-PT')}`, 14, 28);
-    doc.text(`Cliente: ${lead.nome_empresa}`, 14, 34);
-    if (lead.responsavel) doc.text(`A/C: ${lead.responsavel}`, 14, 40);
+    doc.text(`Data: ${new Date().toLocaleDateString('pt-PT')}`, 14, 40);
+    doc.text(`Cliente: ${lead.nome_empresa}`, 14, 46);
+    if (lead.responsavel) doc.text(`A/C: ${lead.responsavel}`, 14, 52);
 
     // Corpo / Resumo
     doc.setFontSize(14);
     doc.setTextColor(40, 40, 40);
-    doc.text('Serviços Recomendados:', 14, 55);
+    doc.text('Serviços Recomendados:', 14, 65);
 
     const tableData = selectedServices.map(nome => {
       const s = catalogoServicos.find(sv => sv.nome.toLowerCase() === nome.toLowerCase() || sv.nome.toLowerCase().includes(nome.toLowerCase()));
@@ -208,7 +227,7 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     });
 
     autoTable(doc, {
-      startY: 60,
+      startY: 70,
       head: [['Serviço', 'Setup (Único)', 'Mensalidade', 'Anual (Licença)']],
       body: tableData,
       theme: 'grid',
@@ -243,6 +262,11 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
       doc.text(`Data Prevista de Entrega: ${new Date(deliveryDate).toLocaleDateString('pt-PT')}`, 14, yPos);
     }
 
+    yPos += 12;
+    doc.setFontSize(11);
+    doc.setTextColor(79, 70, 229);
+    doc.text('Condições de Pagamento: 50% na concordância e 50% na entrega.', 14, yPos);
+
     // Rodapé
     doc.setFontSize(9);
     doc.setTextColor(150, 150, 150);
@@ -252,44 +276,114 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     showToast('PDF gerado com sucesso!', 'success');
   };
 
-  const handleEditPresence = async (type: string, currentUrl: string | undefined) => {
-    const url = window.prompt(`Insira o link para ${type}:`, currentUrl || '');
-    if (url !== null) {
-      const val = url.trim();
-      let updatePayload: any = {};
-      switch(type) {
-        case 'Site':
-          updatePayload.website = val;
-          updatePayload.tem_site = !!val;
-          break;
-        case 'Maps':
-          updatePayload.google_maps_completo = !!val;
-          break;
-        case 'Instagram':
-          updatePayload.instagram = val;
-          updatePayload.tem_instagram = !!val;
-          updatePayload.instagram_ativo = !!val;
-          break;
-        case 'WhatsApp':
-          updatePayload.whatsapp_extraido = val;
-          updatePayload.tem_whatsapp_business = !!val;
-          break;
-        case 'E-commerce':
-          updatePayload.website = val;
-          updatePayload.tem_ecommerce = !!val;
-          break;
-        case 'Facebook':
-          updatePayload.facebook = val;
-          break;
-      }
-      
-      if (Object.keys(updatePayload).length > 0) {
-        const { error } = await supabase.from('leads_prospeccao').update(updatePayload).eq('id', lead.id);
-        if (!error) {
-          setLead(prev => ({ ...prev, ...updatePayload }));
-        }
+  const exportarContratoPDF = async () => {
+    if (selectedServices.length === 0 && (!lead.servicos_recomendados || lead.servicos_recomendados.length === 0)) {
+      showToast('Selecione pelo menos um serviço para gerar o contrato.', 'warning');
+      return;
+    }
+
+    const doc = new jsPDF();
+    
+    // Logo
+    const logoBase64 = await getLogoBase64('dark');
+    if (logoBase64) {
+      doc.addImage(logoBase64, 'PNG', 105 - 24, 10, 48, 12); // Centered (105 is middle, half width is 24)
+    }
+
+    doc.setFontSize(16);
+    doc.setTextColor(40, 40, 40);
+    doc.text('CONTRATO DE PRESTAÇÃO DE SERVIÇOS', 105, 32, { align: 'center' });
+    
+    doc.setFontSize(11);
+    doc.setTextColor(80, 80, 80);
+    
+    const text = `Entre:
+STIMULUS, com sede virtual, adiante designada por PRESTADORA.
+
+E:
+${lead.nome_empresa}, ${lead.nicho ? `do setor de ${lead.nicho},` : ''} com sede em ${lead.morada || '[Morada do Cliente]'}, representada por ${lead.responsavel || 'O Responsável'}, adiante designada por CLIENTE.
+
+CLÁUSULA 1 - OBJETO DO CONTRATO
+O presente contrato tem por objeto a prestação dos seguintes serviços por parte da PRESTADORA:
+- ${selectedServices.join('\n- ')}.
+
+CLÁUSULA 2 - CONDIÇÕES FINANCEIRAS
+O CLIENTE pagará à PRESTADORA, pelos serviços contratados, os seguintes montantes:
+Valor Inicial (Setup): ${formatCurrency(finalValue)}${discountRate > 0 ? ` (Desconto de ${discountRate}% aplicado)` : ''}
+Forma de Pagamento (Setup): 50% na concordância do contrato e 50% na entrega do produto ou serviço.
+${totalMensal > 0 ? `Mensalidade (Recorrente): ${formatCurrency(totalMensal)}\n` : ''}${totalAnual > 0 ? `Anuidade (Licenças): ${formatCurrency(totalAnual)}\n` : ''}
+CLÁUSULA 3 - PRAZOS E ENTREGAS
+A data base prevista para a entrega e ativação dos serviços é ${deliveryDate ? new Date(deliveryDate).toLocaleDateString('pt-PT') : 'conforme acordado'}.
+
+CLÁUSULA 4 - CONFIDENCIALIDADE
+Ambas as partes obrigam-se a manter em rigoroso sigilo quaisquer dados, estratégias, passwords e informações comerciais trocadas durante a vigência deste contrato.
+
+CLÁUSULA 5 - ASSINATURAS
+Este contrato é celebrado de boa fé e aceite por ambas as partes.
+
+Feito em ${new Date().toLocaleDateString('pt-PT')}.
+
+
+________________________________________________
+A PRESTADORA
+
+
+________________________________________________
+O CLIENTE (${lead.nome_empresa})
+`;
+
+    const splitText = doc.splitTextToSize(text, 180);
+    doc.text(splitText, 14, 45);
+
+    doc.save(`Contrato_${lead.nome_empresa.replace(/\s+/g, '_')}.pdf`);
+    showToast('Contrato PDF gerado com sucesso!', 'success');
+  };
+
+  const handleEditPresence = (type: string, currentUrl: string | undefined) => {
+    setEditingPresence({ type, url: currentUrl || '' });
+  };
+
+  const savePresence = async () => {
+    if (!editingPresence) return;
+    const { type, url } = editingPresence;
+    const val = url.trim();
+    let updatePayload: any = {};
+    switch(type) {
+      case 'Site':
+        updatePayload.website = val;
+        updatePayload.tem_site = !!val;
+        break;
+      case 'Maps':
+        updatePayload.google_maps_completo = !!val;
+        break;
+      case 'Instagram':
+        updatePayload.instagram = val;
+        updatePayload.tem_instagram = !!val;
+        updatePayload.instagram_ativo = !!val;
+        break;
+      case 'WhatsApp':
+        updatePayload.whatsapp_extraido = val;
+        updatePayload.tem_whatsapp_business = !!val;
+        break;
+      case 'E-commerce':
+        updatePayload.website = val;
+        updatePayload.tem_ecommerce = !!val;
+        break;
+      case 'Facebook':
+        updatePayload.facebook = val;
+        break;
+    }
+    
+    if (Object.keys(updatePayload).length > 0) {
+      const { error } = await supabase.from('leads_prospeccao').update(updatePayload).eq('id', lead.id);
+      if (!error) {
+        setLead(prev => ({ ...prev, ...updatePayload }));
+        showToast(`${type} guardado com sucesso!`, 'success');
+      } else {
+        showToast('Erro ao guardar link.', 'error');
       }
     }
+    setEditingPresence(null);
   };
 
   // Fetch timeline for this lead
@@ -408,6 +502,29 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-2xl bg-dark-surface/95 border border-white/10 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-xl flex flex-col max-h-[90vh]">
+        
+        {/* Caixa Flutuante para Editar Presença Digital */}
+        {editingPresence && (
+          <div className="absolute inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 rounded-3xl backdrop-blur-sm">
+            <div className="bg-dark-surface border border-white/10 rounded-2xl p-6 shadow-2xl w-full max-w-sm animate-slide-up">
+              <h3 className="text-sm font-bold text-white mb-4">Insira o link para {editingPresence.type}</h3>
+              <input 
+                type="text" 
+                value={editingPresence.url} 
+                onChange={e => setEditingPresence({...editingPresence, url: e.target.value})}
+                onKeyDown={e => { if (e.key === 'Enter') savePresence(); if (e.key === 'Escape') setEditingPresence(null); }}
+                className="input-glass w-full mb-5 text-sm"
+                placeholder={editingPresence.type === 'WhatsApp' ? 'Ex: 912345678' : 'https://...'}
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setEditingPresence(null)} className="btn-secondary text-xs px-4">Cancelar</button>
+                <button onClick={savePresence} className="btn-primary text-xs px-4">Guardar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="p-6 md:p-8 bg-gradient-to-br from-indigo-500/8 to-transparent border-b border-white/5 relative">
           <button onClick={onClose} className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
@@ -700,7 +817,10 @@ export const LeadDetailModal = ({ lead: initialLead, onClose }: LeadDetailModalP
             <MessageCircle size={16} />Iniciar Conversa
           </button>
           <button onClick={exportarPropostaPDF} className="btn-secondary flex items-center justify-center gap-2 text-sm text-blue-300 hover:text-blue-200 hover:border-blue-500/50">
-            <FileText size={16} />Gerar Orçamento (PDF)
+            <FileText size={16} />Gerar Orçamento
+          </button>
+          <button onClick={exportarContratoPDF} className="btn-secondary flex items-center justify-center gap-2 text-sm text-emerald-300 hover:text-emerald-200 hover:border-emerald-500/50">
+            <FileText size={16} />Gerar Contrato
           </button>
           {lead.status_funil !== 'Fechado' && (
             <button 

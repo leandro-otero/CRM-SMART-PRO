@@ -11,6 +11,8 @@ interface Cliente {
   telefone: string; whatsapp: string; email: string; endereco: string;
   segmento: string; cnpj_nif: string; data_inicio: string; status: string;
   notas: string; lead_origem_id?: string | null; created_at: string;
+  links_uteis?: { titulo: string; url: string }[];
+  credenciais?: { servico: string; login: string; pass: string }[];
 }
 
 interface Servico {
@@ -32,6 +34,10 @@ export default function ClientesPage() {
   const [leads, setLeads] = useState<any[]>([]);
   const [form, setForm] = useState({ nome_empresa: '', responsavel: '', cargo: '', telefone: '', whatsapp: '', email: '', endereco: '', segmento: '', cnpj_nif: '', notas: '', lead_origem_id: '' as string | null });
   const [historico, setHistorico] = useState<any[]>([]);
+  const [showPass, setShowPass] = useState<Record<string, boolean>>({});
+  const [cofreEdicao, setCofreEdicao] = useState<string | null>(null);
+  const [tempLinks, setTempLinks] = useState<{ titulo: string; url: string }[]>([]);
+  const [tempCreds, setTempCreds] = useState<{ servico: string; login: string; pass: string }[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -41,7 +47,7 @@ export default function ClientesPage() {
         supabase.from('clientes').select('*').order('created_at', { ascending: false }),
         supabase.from('servicos_contratados').select('*'),
         supabase.from('leads_prospeccao').select('id, nome_empresa, whatsapp_extraido, email_extraido, morada, nicho, observacoes_ia, dor_identificada').order('created_at', { ascending: false }),
-        supabase.from('atividade_log').select('*').in('entidade_tipo', ['cliente', 'lead']).order('created_at', { ascending: false }),
+        supabase.from('atividade_log').select('*').in('entidade_tipo', ['cliente', 'lead']).order('created_at', { ascending: false }).limit(100),
         supabase.from('pipeline_tarefas').select('*').order('data_agendada', { ascending: true })
       ]);
       if (cRes.error) throw cRes.error;
@@ -146,6 +152,19 @@ export default function ClientesPage() {
     }
     fetchData();
   };
+
+  const handleSalvarCofre = async (clienteId: string) => {
+    const { error } = await supabase.from('clientes').update({ links_uteis: tempLinks, credenciais: tempCreds }).eq('id', clienteId);
+    if (error) {
+      showToast('Erro ao guardar cofre', 'error');
+      return;
+    }
+    showToast('Cofre atualizado com sucesso!', 'success');
+    setCofreEdicao(null);
+    fetchData();
+  };
+
+  const togglePass = (idx: number) => setShowPass(prev => ({ ...prev, [idx]: !prev[idx] }));
 
   const filtered = clientes.filter(c => c.nome_empresa.toLowerCase().includes(searchTerm.toLowerCase()) || c.responsavel?.toLowerCase().includes(searchTerm.toLowerCase()));
   const getMRR = (cid: string) => servicos.filter(s => s.cliente_id === cid && s.tipo === 'mensal' && s.status === 'ativo').reduce((a, s) => a + Number(s.valor), 0);
@@ -271,6 +290,89 @@ export default function ClientesPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Cofre e Links */}
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/5 relative">
+                      <div className="flex justify-between items-center mb-4">
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                          🔒 Cofre de Acessos e Links
+                        </p>
+                        {cofreEdicao === c.id ? (
+                          <div className="flex gap-2">
+                            <button onClick={() => setCofreEdicao(null)} className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-gray-300 font-bold transition-colors">Cancelar</button>
+                            <button onClick={() => handleSalvarCofre(c.id)} className="text-[10px] bg-indigo-500 hover:bg-indigo-600 px-2 py-1 rounded text-white font-bold transition-colors">Guardar Cofre</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setCofreEdicao(c.id); setTempLinks(c.links_uteis || []); setTempCreds(c.credenciais || []); }} className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-indigo-300 font-bold transition-colors flex items-center gap-1"><Edit2 size={10} /> Editar Cofre</button>
+                        )}
+                      </div>
+
+                      {cofreEdicao === c.id ? (
+                        <div className="space-y-4">
+                          <div>
+                            <p className="text-[10px] font-bold text-gray-400 mb-2">Links Úteis (Drive, Figma, etc)</p>
+                            {tempLinks.map((l, idx) => (
+                              <div key={`l-${idx}`} className="flex gap-2 mb-2">
+                                <input value={l.titulo} onChange={e => { const nl = [...tempLinks]; nl[idx].titulo = e.target.value; setTempLinks(nl); }} placeholder="Título" className="input-glass text-xs p-2 flex-[0.5]" />
+                                <input value={l.url} onChange={e => { const nl = [...tempLinks]; nl[idx].url = e.target.value; setTempLinks(nl); }} placeholder="https://..." className="input-glass text-xs p-2 flex-1" />
+                                <button onClick={() => setTempLinks(tempLinks.filter((_, i) => i !== idx))} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"><X size={14} /></button>
+                              </div>
+                            ))}
+                            <button onClick={() => setTempLinks([...tempLinks, { titulo: '', url: '' }])} className="text-xs text-indigo-400 font-bold flex items-center gap-1"><Plus size={12} /> Adicionar Link</button>
+                          </div>
+                          <div className="border-t border-white/5 pt-4">
+                            <p className="text-[10px] font-bold text-gray-400 mb-2">Credenciais</p>
+                            {tempCreds.map((cr, idx) => (
+                              <div key={`c-${idx}`} className="flex gap-2 mb-2">
+                                <input value={cr.servico} onChange={e => { const nc = [...tempCreds]; nc[idx].servico = e.target.value; setTempCreds(nc); }} placeholder="Serviço (ex: WP)" className="input-glass text-xs p-2 flex-1" />
+                                <input value={cr.login} onChange={e => { const nc = [...tempCreds]; nc[idx].login = e.target.value; setTempCreds(nc); }} placeholder="Login/Email" className="input-glass text-xs p-2 flex-1" />
+                                <input value={cr.pass} onChange={e => { const nc = [...tempCreds]; nc[idx].pass = e.target.value; setTempCreds(nc); }} placeholder="Password" type="text" className="input-glass text-xs p-2 flex-1" />
+                                <button onClick={() => setTempCreds(tempCreds.filter((_, i) => i !== idx))} className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg"><X size={14} /></button>
+                              </div>
+                            ))}
+                            <button onClick={() => setTempCreds([...tempCreds, { servico: '', login: '', pass: '' }])} className="text-xs text-indigo-400 font-bold flex items-center gap-1"><Plus size={12} /> Adicionar Credencial</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Visualização Links */}
+                          <div>
+                            <p className="text-[10px] text-gray-600 font-bold mb-2 uppercase">Links Úteis</p>
+                            {(!c.links_uteis || c.links_uteis.length === 0) ? <p className="text-xs text-gray-500 italic">Nenhum link guardado.</p> : (
+                              <div className="flex flex-col gap-2">
+                                {c.links_uteis.map((l, i) => (
+                                  <a key={i} href={l.url.startsWith('http') ? l.url : `https://${l.url}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-400 hover:text-indigo-300 font-medium truncate bg-indigo-500/5 hover:bg-indigo-500/10 p-2 rounded-lg transition-colors border border-indigo-500/10">
+                                    🔗 {l.titulo || l.url}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {/* Visualização Credenciais */}
+                          <div>
+                            <p className="text-[10px] text-gray-600 font-bold mb-2 uppercase">Credenciais Ocultas</p>
+                            {(!c.credenciais || c.credenciais.length === 0) ? <p className="text-xs text-gray-500 italic">Nenhuma credencial guardada.</p> : (
+                              <div className="flex flex-col gap-2">
+                                {c.credenciais.map((cr, i) => (
+                                  <div key={i} className="flex flex-col bg-black/20 p-2.5 rounded-lg border border-white/5">
+                                    <p className="text-[11px] font-bold text-gray-300 mb-1">{cr.servico}</p>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex flex-col">
+                                        <span className="text-[10px] text-gray-500 leading-tight">User: <span className="text-gray-400 font-mono">{cr.login}</span></span>
+                                        <span className="text-[10px] text-gray-500 leading-tight">Pass: <span className="text-gray-400 font-mono">{showPass[i] ? cr.pass : '••••••••'}</span></span>
+                                      </div>
+                                      <button onClick={() => togglePass(i)} className="text-[9px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-gray-400">
+                                        {showPass[i] ? 'Ocultar' : 'Revelar'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
 
                     <div className="flex flex-wrap gap-2 sm:gap-3">
                       {c.whatsapp && <button onClick={e => { e.stopPropagation(); let num = c.whatsapp.replace(/\D/g, ''); if (num.length === 9) num = '351' + num; window.open(`https://wa.me/${num}`, '_blank'); }} className="btn-success flex items-center gap-2 text-sm"><MessageCircle size={14} />WhatsApp</button>}

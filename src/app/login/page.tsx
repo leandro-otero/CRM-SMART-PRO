@@ -46,11 +46,8 @@ export default function LoginPage() {
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-500/10 blur-[120px] rounded-full pointer-events-none" />
       
       <div className="w-full max-w-[420px] relative z-10">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 mb-6">
-            <Zap size={32} className="text-white" />
-          </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight mb-2">LeadFlow Pro</h1>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <img src="/logo-stacked.png" alt="STIMULUS" className="w-64 h-auto object-contain mb-2" />
           <p className="text-gray-400 font-medium">Acesso restrito à equipa</p>
         </div>
 
@@ -111,7 +108,7 @@ export default function LoginPage() {
 
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-600 font-medium">
-            &copy; {new Date().getFullYear()} LeadFlow ERP & CRM Pro. Todos os direitos reservados.
+            &copy; {new Date().getFullYear()} STIMULUS ERP & CRM. Todos os direitos reservados.
           </p>
         </div>
       </div>

@@ -17,7 +17,9 @@ import {
   X,
   Briefcase,
   ShieldAlert,
-  LogOut
+  LogOut,
+  KanbanSquare,
+  Package
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabaseClient';
@@ -25,10 +27,11 @@ import { supabase } from '@/lib/supabaseClient';
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/prospeccao', label: 'Prospecção', icon: Search },
-  { href: '/pipeline', label: 'Pipeline', icon: Kanban },
+  { href: '/pipeline', label: 'Pipeline', icon: KanbanSquare },
+  { href: '/projetos', label: 'Projetos', icon: Briefcase },
   { href: '/tarefas', label: 'Tarefas', icon: CheckSquare },
   { href: '/clientes', label: 'Clientes', icon: Users },
-  { href: '/servicos', label: 'Catálogo', icon: Briefcase },
+  { href: '/servicos', label: 'Catálogo', icon: Package },
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign },
 ];
 
@@ -44,8 +47,8 @@ export const Sidebar = () => {
       const { count, error } = await supabase
         .from('pipeline_tarefas')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'pendente')
-        .lt('data_vencimento', today);
+        .eq('concluida', false)
+        .lt('data_agendada', today);
       
       if (!error && count !== null) {
         setOverdueCount(count);
@@ -68,12 +71,8 @@ export const Sidebar = () => {
     <>
       {/* Brand */}
       <div className="p-6 pb-4 flex items-center gap-3 border-b border-white/5">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-          <Zap size={20} className="text-white" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-extrabold text-white tracking-tight">LeadFlow</h1>
-          <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] font-semibold">ERP &amp; CRM Pro</p>
+        <div className="flex-1 flex justify-center py-2">
+          <img src="/logo-light.png" alt="STIMULUS" className="h-8 object-contain" />
         </div>
         {/* Close button only on mobile */}
         <button
